@@ -44,7 +44,7 @@ def test_three_kpi_cards_charts_and_two_downloads(app: AppTest) -> None:
     assert cards.count('class="kpi-card"') == 3
     assert cards.count('class="kpi-meter"') == 3
     assert len(app.get("download_button")) == 2
-    assert len(app.get("plotly_chart")) == 2  # SHAP waterfall + national map
+    assert len(app.get("plotly_chart")) >= 2  # SHAP waterfall + national map (+ planning maps)
 
 
 def test_hazard_selector_scopes_explanation_and_map(app: AppTest) -> None:
@@ -94,3 +94,19 @@ def test_no_matplotlib_figure_is_ever_created(app: AppTest) -> None:
     import matplotlib.pyplot as plt  # test-only: proves the app created no figures (audit F3.1)
 
     assert plt.get_fignums() == []
+
+
+def test_planning_tools_render_with_hypothetical_labels(app: AppTest) -> None:
+    markdown = _markdown(app)
+    assert sum("HYPOTHETICAL SCENARIO" in m for m in markdown) >= 1
+    assert any("would become High" in m for m in markdown)
+    assert any("districts are High for two or more hazards" in m for m in markdown)
+    labels = [s.label for s in app.slider]
+    assert "Summer temperature shift (°C)" in labels and "Annual rainfall multiplier (×)" in labels
+    assert len(app.get("plotly_chart")) >= 5  # waterfall, assessment map, two stress maps, hotspot map
+
+
+def test_favicon_is_the_nigehban_emblem_png() -> None:
+    import app as dashboard
+
+    assert dashboard.FAVICON_PATH.is_file() and dashboard.FAVICON_PATH.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"

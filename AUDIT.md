@@ -390,6 +390,14 @@ Each change was driven by a real-browser render (Edge via Playwright at 390px an
 | N4 | **Branding:** centered Nigehban header (flag-green band, inline SVG shield-and-eye emblem, Noto Nastaliq Urdu wordmark in `dir="rtl" lang="ur"` with line-height 2.6, Latin wordmark, "not an official NDMA or PDMA system" note). Crescent-and-star deliberately not used: it is a national state symbol. Font bundled under `static/fonts` (OFL) and served by Streamlit static serving | Edge: font loaded (`document.fonts.check` true), HTTP 200 for the font file; header, banner, district bar stacked in that order, sidebar in its own column | `tests/test_accessibility.py::test_nigehban_header_uses_rtl_nastaliq_and_no_state_symbols`, `tests/test_app_smoke.py::test_layout_order_brand_then_banner_then_district` |
 | N5 | **Publishing:** local git repository and initial commit created; no GitHub remote or deployment exists yet (no GitHub CLI or credentials available to this session). README lists the exact remaining steps and does not claim a live link | `git log` | Not verifiable until pushed |
 
+### Planning tools and favicon (user request; no audit finding)
+
+| ID | Change | Evidence | Verified by |
+|---|---|---|---|
+| P1 | Climate stress test: uniform temperature shift and rainfall multiplier (defaults +2 °C, ×1.5; bounded 0–4 °C and ×0.5–2.0), re-scored with the deployed isolated models; newly-High list sorted by rise in P(High); current vs scenario maps; per-result extrapolation flag using the training range of the inputs each hazard actually uses; HYPOTHETICAL label | Defaults: 27 results become High (flood 6, heatwave 21, seismic 0); 5% of flood/heatwave results extrapolated | `tests/test_risk_engine.py::test_stress_test_leaves_seismic_untouched`, `::test_becomes_high_means_high_only_under_the_scenario`, `::test_stress_test_flags_extrapolation_beyond_training_range`, `::test_stress_settings_are_validated` |
+| P2 | Multi-hazard hotspots: districts High for 2+ hazards, current or under the stress scenario, table plus map | 10 districts now, 15 under the default scenario | `tests/test_risk_engine.py::test_hotspots_are_districts_high_for_two_or_more_hazards`, `tests/test_app_smoke.py::test_planning_tools_render_with_hypothetical_labels` |
+| P3 | Browser favicon: the header's SVG emblem on a flag-green tile, rendered to PNG by `scripts/build_favicon.py` and set as `page_icon` | Edge: tab title and icon link served by Streamlit | `tests/test_app_smoke.py::test_favicon_is_the_nigehban_emblem_png` |
+
 ### Requested items that cannot be completed from repository data
 
 | Item | Why | Smallest real input needed |

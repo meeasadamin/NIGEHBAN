@@ -37,6 +37,8 @@ import ui_theme as theme
 logger = logging.getLogger("ndma_dashboard")
 
 DEFAULT_DISTRICT = "Islamabad"  # neutral default: the capital territory
+# Browser tab icon: the Nigehban emblem, rendered to PNG by scripts/build_favicon.py.
+FAVICON_PATH = Path(__file__).resolve().parent / "static" / "nigehban-favicon.png"
 MAX_WATERFALL_FEATURES = 8  # keeps the chart readable on a phone; the rest are grouped
 #: Sidebar grouping of the tunable inputs (order matches engine.TUNABLE_FEATURES).
 SLIDER_GROUPS: dict[str, tuple[str, ...]] = {
@@ -265,6 +267,22 @@ def map_figure(
     scenario_prediction = assessment.predictions[target]
     rows.loc[selected, "label"] = scenario_prediction.label  # the selected district shows the simulated scenario
     rows.loc[selected, "p_high"] = scenario_prediction.p_high
+    return emphasis_map_figure(rows, rows["label"] == "High", selected, layers)
+
+
+def emphasis_map_figure(
+    rows: pd.DataFrame,
+    emphasized: pd.Series,
+    selected: pd.Series | None,
+    layers: engine.MapLayers,
+    height: int = 430,
+) -> go.Figure:
+    """Shared national map: emphasised districts in the High hue, all others slate, optional selection ring.
+
+    ``rows`` needs ``latitude, longitude, district_name, province, label, p_high``; ``label`` is the hover text.
+    Used by the assessment panel, the climate stress test, and the hotspot view, so all three share one
+    verified encoding (see ui_theme module docstring).
+    """
     hover = (
         "<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]} · P(High) %{customdata[3]:.1%}<extra></extra>"
     )
@@ -281,20 +299,22 @@ def map_figure(
             name=name,
         )
 
-    others, highs = rows[rows["label"] != "High"], rows[rows["label"] == "High"]
-    chosen = rows[selected]
-    chosen_color = theme.MAP_HIGH if scenario_prediction.label == "High" else theme.MAP_OTHER
-    figure = go.Figure(
-        [
-            trace(others, theme.PAGE_BACKGROUND, 11, "ring", hoverable=False),  # 2px surface ring under each mark
-            trace(others, theme.MAP_OTHER, 7, "Medium or Low"),
-            trace(highs, theme.PAGE_BACKGROUND, 13, "ring", hoverable=False),
-            trace(highs, theme.MAP_HIGH, 9, "High"),
+    others, highs = rows[~emphasized], rows[emphasized]
+    traces = [
+        trace(others, theme.PAGE_BACKGROUND, 11, "ring", hoverable=False),  # 2px surface ring under each mark
+        trace(others, theme.MAP_OTHER, 7, "Other"),
+        trace(highs, theme.PAGE_BACKGROUND, 13, "ring", hoverable=False),
+        trace(highs, theme.MAP_HIGH, 9, "Emphasised"),
+    ]
+    if selected is not None and bool(selected.any()):
+        chosen = rows[selected]
+        chosen_color = theme.MAP_HIGH if bool(emphasized[selected].iloc[0]) else theme.MAP_OTHER
+        traces += [
             trace(chosen, theme.MAP_SELECTED_RING, 20, "Selected district ring", hoverable=False),
             trace(chosen, theme.PAGE_BACKGROUND, 15, "ring", hoverable=False),
             trace(chosen, chosen_color, 10, "Selected district"),
         ]
-    )
+    figure = go.Figure(traces)
     figure.update_layout(
         map={
             "style": "white-bg",
@@ -318,7 +338,7 @@ def map_figure(
                 },
             ],
         },
-        height=430,
+        height=height,
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
         showlegend=False,
         paper_bgcolor=theme.PAGE_BACKGROUND,
@@ -437,6 +457,221 @@ def render_profile_panel(assessment: engine.Assessment, df: pd.DataFrame) -> Non
             "Source": st.column_config.TextColumn("Source", help="Real reference data or synthetic"),
         },
     )
+
+
+@st.cache_data(max_entries=16, show_spinner="Re-scoring every district under the scenario…")
+def get_stress_test(
+    bundle_sha256: str,
+    data_sha256: str,
+    temp_shift_c: float,
+    rain_factor: float,
+    _bundle: engine.ModelBundle,
+    _df: pd.DataFrame,
+    _domain: engine.ApplicabilityDomain,
+) -> pd.DataFrame:
+    """Stress-test results, cached per model, dataset, and scenario setting."""
+    del bundle_sha256, data_sha256  # cache key only
+    return engine.stress_test(_bundle, _df, _domain, temp_shift_c, rain_factor)
+
+
+def _map_rows(results: pd.DataFrame, target: str, stressed: bool) -> pd.DataFrame:
+    """Shape stress-test rows for the shared emphasis map (hover text marks extrapolated results)."""
+    rows = results[results["target"] == target].copy()
+    prefix = "stressed" if stressed else "current"
+    rows["label"] = rows[f"{prefix}_label"]
+    rows["p_high"] = rows[f"{prefix}_p_high"]
+    if stressed:
+        rows.loc[rows["extrapolated"], "label"] = rows["label"] + " (extrapolated)"
+    return rows
+
+
+def render_stress_test(
+    bundle: engine.ModelBundle,
+    df: pd.DataFrame,
+    domain: engine.ApplicabilityDomain,
+    data_sha256: str,
+    layers: engine.MapLayers,
+) -> None:
+    """Feature 4: apply a stated climate shift to every district and show which ones become High."""
+    st.markdown(
+        theme.planning_label_html(
+            "what-if analysis, not a projection or forecast",
+            "Every district's summer temperature and rainfall are shifted by the amounts below and re-scored with the "
+            "same deployed models. Nothing else changes. Results flagged extrapolated go beyond the data the models "
+            "were trained on and deserve less confidence.",
+        ),
+        unsafe_allow_html=True,
+    )
+    left, right = st.columns(2)
+    temp_shift = left.slider(
+        "Summer temperature shift (°C)", *engine.STRESS_TEMP_SHIFT_RANGE, value=2.0, step=0.5, key="stress_temp"
+    )
+    rain_factor = right.slider(
+        "Annual rainfall multiplier (×)", *engine.STRESS_RAIN_FACTOR_RANGE, value=1.5, step=0.1, key="stress_rain"
+    )
+    results = get_stress_test(bundle.sha256, data_sha256, float(temp_shift), float(rain_factor), bundle, df, domain)
+
+    newly = results[results["becomes_high"]].sort_values("change_pts", ascending=False)
+    counts = ", ".join(f"{engine.TARGET_LABELS[t]} {int((newly['target'] == t).sum())}" for t in bundle.targets)
+    st.markdown(
+        theme.section_head_html(
+            f"{len(newly)} district-hazard results would become High",
+            f"+{temp_shift:g} °C and rainfall ×{rain_factor:g} · by hazard: {counts} · largest rise in P(High) first",
+            panel=True,
+        ),
+        unsafe_allow_html=True,
+    )
+    if newly.empty:
+        st.markdown("No district moves to High under this scenario.")
+    else:
+        st.dataframe(
+            pd.DataFrame(
+                {
+                    "District": newly["district_name"],
+                    "Province": newly["province"],
+                    "Hazard": newly["target"].map(engine.TARGET_LABELS),
+                    "Now": newly["current_label"]
+                    + " · "
+                    + (newly["current_p_high"] * 100).round(0).astype(int).astype(str)
+                    + "%",
+                    "Under scenario": "High · "
+                    + (newly["stressed_p_high"] * 100).round(0).astype(int).astype(str)
+                    + "%",
+                    "Rise in P(High)": newly["change_pts"].map(lambda v: f"+{v:.1f} pts"),
+                    "Confidence": newly["extrapolated"].map(
+                        {True: "⚠ Extrapolated: input beyond training range", False: "Within training range"}
+                    ),
+                }
+            ),
+            hide_index=True,
+            width="stretch",
+            height=min(38 * (len(newly) + 1) + 4, 400),
+        )
+    extrapolated_share = results.loc[results["target"].isin(["flood_risk", "heatwave_risk"]), "extrapolated"].mean()
+    st.markdown(
+        f"Seismic results never change here: the seismic model does not use temperature or rainfall. "
+        f"{extrapolated_share:.0%} of flood and heatwave results under this scenario are extrapolated."
+    )
+
+    hazard = st.segmented_control(
+        "Compare hazard",
+        options=[t for t in bundle.targets if t != "seismic_risk"],
+        format_func=lambda t: engine.TARGET_LABELS[t],
+        default="heatwave_risk",
+        required=True,
+        key="stress_hazard",
+    )
+    now_col, stress_col = st.columns(2, gap="large")
+    for column, stressed, title in ((now_col, False, "Current conditions"), (stress_col, True, "Under the scenario")):
+        with column:
+            rows = _map_rows(results, hazard, stressed)
+            emphasized = rows[f"{'stressed' if stressed else 'current'}_label"] == "High"
+            st.markdown(
+                theme.section_head_html(
+                    title,
+                    f"{int(emphasized.sum())} districts High for {engine.TARGET_LABELS[hazard].lower()}",
+                    panel=True,
+                ),
+                unsafe_allow_html=True,
+            )
+            st.plotly_chart(
+                emphasis_map_figure(rows, emphasized, None, layers, height=380),
+                width="stretch",
+                config={"displayModeBar": False, "scrollZoom": False, "responsive": True},
+                key=f"stress_map_{stressed}",
+            )
+    st.markdown(
+        theme.map_legend_html(engine.TARGET_LABELS[hazard], other_label="Medium or Low", selected=False),
+        unsafe_allow_html=True,
+    )
+
+
+def render_hotspots(
+    national: pd.DataFrame,
+    bundle: engine.ModelBundle,
+    df: pd.DataFrame,
+    domain: engine.ApplicabilityDomain,
+    data_sha256: str,
+    layers: engine.MapLayers,
+) -> None:
+    """Feature 5: districts predicted High for two or more hazards at once."""
+    conditions = st.radio(
+        "Conditions",
+        ["Current conditions", "Climate stress-test scenario"],
+        horizontal=True,
+        key="hotspot_conditions",
+        help="The scenario uses the temperature shift and rainfall multiplier set in the stress-test tab.",
+    )
+    if conditions == "Current conditions":
+        predictions, label_col, p_col = national, "label", "p_high"
+    else:
+        temp_shift = float(st.session_state.get("stress_temp", 2.0))
+        rain_factor = float(st.session_state.get("stress_rain", 1.5))
+        st.markdown(
+            theme.planning_label_html(
+                "what-if analysis, not a projection or forecast",
+                f"Hotspots recomputed with summer temperature +{temp_shift:g} °C and rainfall ×{rain_factor:g}.",
+            ),
+            unsafe_allow_html=True,
+        )
+        predictions = get_stress_test(bundle.sha256, data_sha256, temp_shift, rain_factor, bundle, df, domain)
+        label_col, p_col = "stressed_label", "stressed_p_high"
+
+    hotspots = engine.multi_hazard_hotspots(predictions, label_col, p_col)
+    st.markdown(
+        theme.section_head_html(
+            f"{len(hotspots)} districts are High for two or more hazards",
+            "Compound risk: one district facing several hazards at once needs coordinated preparedness.",
+            panel=True,
+        ),
+        unsafe_allow_html=True,
+    )
+    table_col, map_col = st.columns([7, 5], gap="large")
+    with table_col:
+        st.dataframe(
+            hotspots.rename(
+                columns={
+                    "district_name": "District",
+                    "province": "Province",
+                    "high_count": "High hazards",
+                    "high_hazards": "Which hazards",
+                    "combined_p_high": "Sum P(High)",
+                }
+            ),
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Sum P(High)": st.column_config.NumberColumn(
+                    format="%.2f", help="Sum of P(High) across the High hazards; used to rank ties"
+                )
+            },
+        )
+    with map_col:
+        rows = predictions[predictions["target"] == bundle.targets[0]].copy()
+        by_name = hotspots.set_index("district_name")
+        is_hotspot = rows["district_name"].isin(by_name.index)
+        rows["label"] = "Fewer than two High hazards"
+        rows.loc[is_hotspot, "label"] = (
+            "High: " + rows.loc[is_hotspot, "district_name"].map(by_name["high_hazards"]) + " · mean"
+        )
+        # Hover shows the mean P(High) across the district's High hazards (not a combined probability).
+        rows["p_high"] = 0.0
+        rows.loc[is_hotspot, "p_high"] = rows.loc[is_hotspot, "district_name"].map(
+            by_name["combined_p_high"] / by_name["high_count"]
+        )
+        emphasized = rows["district_name"].isin(hotspots["district_name"])
+        st.plotly_chart(
+            emphasis_map_figure(rows, emphasized, None, layers, height=400),
+            width="stretch",
+            config={"displayModeBar": False, "scrollZoom": False, "responsive": True},
+            key="hotspot_map",
+        )
+        st.markdown(
+            theme.map_legend_html(
+                "", emphasized_label="High for 2+ hazards", other_label="Other districts", selected=False
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 def render_model_card(bundle: engine.ModelBundle, issues: tuple[engine.ProvenanceIssue, ...]) -> None:
@@ -619,6 +854,18 @@ def render_dashboard() -> None:
     with st.container(border=True):
         render_profile_panel(assessment, df)
 
+    st.markdown(
+        theme.section_head_html(
+            "Planning ahead", "National what-if tools: which districts would become High, and where hazards compound."
+        ),
+        unsafe_allow_html=True,
+    )
+    stress_tab, hotspot_tab = st.tabs(["Climate stress test", "Multi-hazard hotspots"])
+    with stress_tab:
+        render_stress_test(bundle, df, domain, data_sha256, layers)
+    with hotspot_tab:
+        render_hotspots(national, bundle, df, domain, data_sha256, layers)
+
     st.markdown(theme.section_head_html("Model and data"), unsafe_allow_html=True)
     model_tab, data_tab = st.tabs(["Model card", "Dataset labels"])
     with model_tab:
@@ -630,7 +877,9 @@ def render_dashboard() -> None:
 
 def main() -> None:
     """Entry point with a single error boundary: users never see a traceback."""
-    st.set_page_config(page_title="Nigehban · Multi-Hazard Risk (simulated)", page_icon="🛡️", layout="wide")
+    st.set_page_config(
+        page_title="Nigehban · Multi-Hazard Risk (simulated)", page_icon=str(FAVICON_PATH), layout="wide"
+    )
     try:
         render_dashboard()
     except engine.RiskEngineError as exc:

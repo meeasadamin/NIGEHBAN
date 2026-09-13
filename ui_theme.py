@@ -420,13 +420,26 @@ def kpi_card_html(
     )
 
 
-def map_legend_html(hazard: str) -> str:
+def planning_label_html(title: str, body: str) -> str:
+    """Label shown on each planning tool: hypothetical what-if analysis, never a forecast."""
+    return (
+        '<div class="ndma-banner" role="note">'
+        f"<strong>HYPOTHETICAL SCENARIO — {html.escape(title)}.</strong> {html.escape(body)}"
+        "</div>"
+    )
+
+
+def map_legend_html(
+    hazard: str, emphasized_label: str | None = None, other_label: str = "Medium or Low", selected: bool = True
+) -> str:
     """Legend for the national map (always present: the map has more than one mark type)."""
+    emphasized_label = emphasized_label or f"High {hazard.lower()} risk"
+    ring = '<span class="key"><span class="ring"></span>Selected district</span>' if selected else ""
     return (
         '<div class="map-legend">'
-        f'<span class="key"><span class="dot" style="background: {MAP_HIGH}"></span>High {html.escape(hazard.lower())} risk</span>'
-        f'<span class="key"><span class="dot" style="background: {MAP_OTHER}"></span>Medium or Low</span>'
-        '<span class="key"><span class="ring"></span>Selected district</span>'
+        f'<span class="key"><span class="dot" style="background: {MAP_HIGH}"></span>{html.escape(emphasized_label)}</span>'
+        f'<span class="key"><span class="dot" style="background: {MAP_OTHER}"></span>{html.escape(other_label)}</span>'
+        f"{ring}"
         f'<span class="key"><span class="line" style="background: {MAP_FAULT}"></span>Active fault (GEM)</span>'
         f'<span class="key"><span class="line" style="background: {MAP_COAST}"></span>Coastline</span>'
         "</div>"

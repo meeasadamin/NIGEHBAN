@@ -1362,3 +1362,96 @@ def load_map_layers(reference_dir: Path | None = None) -> MapLayers:
         faults=MappingProxyType(_rounded_geojson(paths["faults"])),
         coastline=MappingProxyType(_rounded_geojson(paths["coastline"])),
     )
+
+
+# --------------------------------------------------------------------------
+# Planning tools: climate stress test and multi-hazard hotspots
+# --------------------------------------------------------------------------
+
+#: Allowed stress-test settings. Wider shifts would push most districts outside the training
+#: range, where tree models freeze and results would be mostly extrapolated (judgment).
+STRESS_TEMP_SHIFT_RANGE: Final[tuple[float, float]] = (0.0, 4.0)
+STRESS_RAIN_FACTOR_RANGE: Final[tuple[float, float]] = (0.5, 2.0)
+#: The inputs a stress test changes; every other input keeps its dataset value.
+STRESS_FEATURES: Final[tuple[str, ...]] = ("summer_max_temp_c", "avg_annual_rainfall_mm")
+
+
+def stressed_dataset(df: pd.DataFrame, temp_shift_c: float, rain_factor: float) -> pd.DataFrame:
+    """Apply a uniform climate shift to every district.
+
+    Only the two stated inputs change. Dependent synthetic inputs (e.g. NDVI, which the generator
+    derives from rainfall) are deliberately left unchanged, so the scenario is exactly what the
+    user set and nothing is modelled implicitly.
+
+    Raises:
+        ScenarioValidationError: A shift is outside the allowed range.
+    """
+    low_t, high_t = STRESS_TEMP_SHIFT_RANGE
+    low_r, high_r = STRESS_RAIN_FACTOR_RANGE
+    if not (math.isfinite(temp_shift_c) and low_t <= temp_shift_c <= high_t):
+        raise ScenarioValidationError(f"Temperature shift must be between +{low_t:g} and +{high_t:g} °C.")
+    if not (math.isfinite(rain_factor) and low_r <= rain_factor <= high_r):
+        raise ScenarioValidationError(f"Rainfall factor must be between ×{low_r:g} and ×{high_r:g}.")
+    stressed = df.copy()
+    stressed["summer_max_temp_c"] = stressed["summer_max_temp_c"] + temp_shift_c
+    stressed["avg_annual_rainfall_mm"] = stressed["avg_annual_rainfall_mm"] * rain_factor
+    return stressed
+
+
+def stress_test(
+    bundle: ModelBundle, df: pd.DataFrame, domain: ApplicabilityDomain, temp_shift_c: float, rain_factor: float
+) -> pd.DataFrame:
+    """Re-score every district under a climate shift with the deployed, input-isolated models.
+
+    Returns:
+        One row per district and hazard: current and stressed label and P(High), the change in
+        percentage points, ``becomes_high`` (not High now, High under stress), and ``extrapolated``
+        (a stressed input *used by that hazard's model* falls outside the training range, so the
+        tree model is holding its edge value and the result deserves less confidence).
+    """
+    current = predict_dataset(bundle, df)
+    stressed_df = stressed_dataset(df, temp_shift_c, rain_factor)
+    stressed = predict_dataset(bundle, stressed_df)
+    result = current.rename(columns={"label": "current_label", "p_high": "current_p_high"})
+    result["stressed_label"] = stressed["label"].to_numpy()
+    result["stressed_p_high"] = stressed["p_high"].to_numpy()
+    result["change_pts"] = (result["stressed_p_high"] - result["current_p_high"]) * 100
+    result["becomes_high"] = (result["stressed_label"] == "High") & (result["current_label"] != "High")
+
+    outside: dict[str, np.ndarray] = {
+        feature: ~stressed_df[feature].between(domain.lower[feature], domain.upper[feature]).to_numpy()
+        for feature in STRESS_FEATURES
+    }
+    flags = np.zeros(len(result), dtype=bool)
+    for target in bundle.targets:
+        rows = (result["target"] == target).to_numpy()
+        used = [f for f in STRESS_FEATURES if f in bundle.features_for(target)]
+        per_district = np.any([outside[f] for f in used], axis=0) if used else np.zeros(len(df), dtype=bool)
+        flags[rows] = per_district
+    result["extrapolated"] = flags
+    return result
+
+
+def multi_hazard_hotspots(
+    predictions: pd.DataFrame, label_column: str = "label", p_column: str = "p_high"
+) -> pd.DataFrame:
+    """Districts predicted High for two or more hazards at once.
+
+    Args:
+        predictions: Long-format predictions (``predict_dataset`` output, or ``stress_test`` output
+            with ``label_column="stressed_label"``).
+        label_column: Column holding the predicted level.
+        p_column: Column holding P(High).
+
+    Returns:
+        ``district_name, province, high_count, high_hazards, combined_p_high``, sorted with the most
+        hazards first, then by combined P(High).
+    """
+    highs = predictions[predictions[label_column] == "High"]
+    grouped = highs.groupby(["district_name", "province"], sort=False).agg(
+        high_count=("target", "size"),
+        high_hazards=("target", lambda t: ", ".join(TARGET_LABELS[x] for x in sorted(t, key=TARGETS.index))),
+        combined_p_high=(p_column, "sum"),
+    )
+    hotspots = grouped[grouped["high_count"] >= 2].reset_index()
+    return hotspots.sort_values(["high_count", "combined_p_high"], ascending=False, ignore_index=True)

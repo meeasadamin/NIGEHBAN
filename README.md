@@ -164,6 +164,14 @@ The function is [`risk_engine.narrate_explanation`](risk_engine.py); its branche
 
 ---
 
+## Planning ahead: climate stress test and multi-hazard hotspots
+
+Both tools label themselves **HYPOTHETICAL SCENARIO — what-if analysis, not a projection or forecast**, and both reuse the deployed, input-isolated models with their calibration and High thresholds. No separate model or data pipeline exists for them.
+
+- **Climate stress test** (`risk_engine.stress_test`): shifts every district's summer temperature (default **+2 °C**, adjustable 0–4) and multiplies rainfall (default **×1.5**, adjustable 0.5–2.0), then re-scores all 150 districts. Nothing else changes; NDVI, which the generator derives from rainfall, is deliberately left alone so the scenario is exactly what the user set. The first thing shown is the list of districts that **become High** but are not High today, sorted by rise in P(High), with current and scenario maps side by side. At the defaults: 27 district-hazard results become High (flood 6, heatwave 21). Seismic results do not change at all, which is the input isolation working.
+- **Extrapolation guard:** a result is flagged *extrapolated* when a shifted input used by that hazard's model falls outside the training range. Tree models hold their edge value there, so those rows say so instead of carrying the same confidence (5% of flood and heatwave results at the defaults).
+- **Multi-hazard hotspots** (`risk_engine.multi_hazard_hotspots`): districts predicted High for two or more hazards at once, under current conditions (10 districts) or the stress-test scenario (15 at the defaults), as a table and a map.
+
 ## What-if simulator and extrapolation guards
 
 - Six inputs are adjustable: rainfall, summer temperature, river distance, NDVI, population density, infrastructure quality. Geography and event history are fixed properties of a district and cannot be changed.
@@ -222,6 +230,7 @@ ui_theme.py                 Design tokens, CSS, WCAG contrast utilities
 generate_data.py            Dataset generator (seed 42; --check verifies the committed CSV)
 train.py                    Nested-CV training, calibration, bundle + manifest + metrics
 scripts/
+  build_favicon.py          Renders the Nigehban browser-tab icon from the header emblem
   build_reference_data.py   Downloads and subsets the real reference layers
   evaluate_v1_protocol.py   Re-scores v1 data with the nested protocol
   check_layout.py           Real-browser responsive/contrast measurements

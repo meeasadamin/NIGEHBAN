@@ -318,3 +318,59 @@ def test_csv_cells_cannot_inject_formulas() -> None:
     assert engine._csv_safe('=HYPERLINK("http://x")') == '\'=HYPERLINK("http://x")'
     assert engine._csv_safe("Gwadar") == "Gwadar"
     assert engine._csv_safe(-1.5) == -1.5
+
+
+# ---------------------------------------------------------------- planning tools: stress test and hotspots
+
+
+@pytest.fixture(scope="module")
+def stressed(bundle: engine.ModelBundle, df: pd.DataFrame, domain: engine.ApplicabilityDomain) -> pd.DataFrame:
+    return engine.stress_test(bundle, df, domain, 2.0, 1.5)
+
+
+def test_stress_test_leaves_seismic_untouched(stressed: pd.DataFrame) -> None:
+    seismic = stressed[stressed["target"] == "seismic_risk"]
+    assert (seismic["change_pts"].abs() < 1e-9).all()
+    assert not seismic["becomes_high"].any() and not seismic["extrapolated"].any()
+
+
+def test_becomes_high_means_high_only_under_the_scenario(stressed: pd.DataFrame, bundle: engine.ModelBundle) -> None:
+    newly = stressed[stressed["becomes_high"]]
+    assert not newly.empty
+    assert (newly["stressed_label"] == "High").all() and (newly["current_label"] != "High").all()
+    assert len(stressed) == 150 * len(bundle.targets)
+
+
+def test_stress_test_flags_extrapolation_beyond_training_range(
+    bundle: engine.ModelBundle, df: pd.DataFrame, domain: engine.ApplicabilityDomain
+) -> None:
+    hottest = df["summer_max_temp_c"].idxmax()
+    results = engine.stress_test(bundle, df, domain, 2.0, 1.0)
+    row = results[
+        (results["district_name"] == df.loc[hottest, "district_name"]) & (results["target"] == "heatwave_risk")
+    ]
+    assert bool(row["extrapolated"].iloc[0])  # the hottest district is pushed past the training maximum
+    none = engine.stress_test(bundle, df, domain, 0.0, 1.0)
+    # Parallel tree summation leaves ~1e-14 pt float noise; no label may change.
+    assert not none["extrapolated"].any() and (none["change_pts"].abs() < 1e-9).all()
+    assert (none["current_label"] == none["stressed_label"]).all()
+
+
+@pytest.mark.parametrize(("temp", "rain"), [(-1.0, 1.5), (5.0, 1.5), (2.0, 0.1), (2.0, float("nan"))])
+def test_stress_settings_are_validated(
+    bundle: engine.ModelBundle, df: pd.DataFrame, domain: engine.ApplicabilityDomain, temp: float, rain: float
+) -> None:
+    with pytest.raises(engine.ScenarioValidationError):
+        engine.stress_test(bundle, df, domain, temp, rain)
+
+
+def test_hotspots_are_districts_high_for_two_or_more_hazards(
+    bundle: engine.ModelBundle, df: pd.DataFrame, stressed: pd.DataFrame
+) -> None:
+    national = engine.predict_dataset(bundle, df)
+    hotspots = engine.multi_hazard_hotspots(national)
+    counts = national[national["label"] == "High"].groupby("district_name").size()
+    assert set(hotspots["district_name"]) == set(counts[counts >= 2].index)
+    assert hotspots["high_count"].is_monotonic_decreasing
+    under_stress = engine.multi_hazard_hotspots(stressed, "stressed_label", "stressed_p_high")
+    assert (under_stress["high_count"] >= 2).all()
