@@ -128,50 +128,67 @@ def render_sidebar(df: pd.DataFrame, domain: engine.ApplicabilityDomain) -> tupl
         ``(district, overrides)`` where overrides hold every tunable slider value.
     """
     sidebar = st.sidebar
-    sidebar.markdown('<div class="sidebar-group first">District</div>', unsafe_allow_html=True)
-    districts = sorted(df["district_name"].tolist())
-    district = sidebar.selectbox(
-        "District",
-        districts,
-        index=districts.index(DEFAULT_DISTRICT) if DEFAULT_DISTRICT in districts else 0,
-        key="district",
-        label_visibility="collapsed",
-    )
-    baseline = engine.build_scenario(df, district)
-    sidebar.markdown(f"{baseline['province'].iloc[0]} · GeoNames id {int(baseline['geonames_id'].iloc[0])}")
+    sidebar.markdown(theme.sidebar_brand_html(), unsafe_allow_html=True)  # static markup only
 
-    sidebar.markdown('<div class="sidebar-group">What-if scenario</div>', unsafe_allow_html=True)
-    # st.markdown rather than st.caption: caption text is a faded grey whose contrast is not verified.
-    sidebar.markdown("Sliders stay within the training range: beyond it, tree models silently freeze their scores.")
+    with sidebar.container(key="sb_district"):
+        st.markdown(theme.sidebar_card_head_html("District"), unsafe_allow_html=True)
+        districts = sorted(df["district_name"].tolist())
+        district = st.selectbox(
+            "District",
+            districts,
+            index=districts.index(DEFAULT_DISTRICT) if DEFAULT_DISTRICT in districts else 0,
+            key="district",
+            label_visibility="collapsed",
+        )
+        baseline = engine.build_scenario(df, district)
+        st.markdown(
+            theme.sidebar_meta_html(
+                [str(baseline["province"].iloc[0]), f"GeoNames {int(baseline['geonames_id'].iloc[0])}"]
+            ),
+            unsafe_allow_html=True,
+        )
+
     overrides: dict[str, float] = {}
-    for group, names in SLIDER_GROUPS.items():
-        sidebar.markdown(f"**{group}**")
-        for name in names:
-            spec = engine.TUNABLE_BY_NAME[name]
-            lower, upper = domain.lower[name], domain.upper[name]
-            dataset_value = float(baseline[name].iloc[0])
-            overrides[name] = sidebar.slider(
-                f"{spec.label} ({spec.unit})" if spec.unit else spec.label,
-                min_value=float(lower),
-                max_value=float(upper),
-                value=min(max(dataset_value, lower), upper),
-                step=spec.step,
-                format=f"%.{spec.decimals}f",
-                key=_slider_key(district, name),
-                help=(
-                    f"Dataset value for {district}: {spec.format(dataset_value)}. "
-                    f"Training range: {spec.format(lower)} – {spec.format(upper)}."
-                ),
-            )
+    for group_index, (group, names) in enumerate(SLIDER_GROUPS.items()):
+        with sidebar.container(key=f"sb_group_{group_index}"):
+            st.markdown(theme.sidebar_card_head_html(group), unsafe_allow_html=True)
+            for name in names:
+                spec = engine.TUNABLE_BY_NAME[name]
+                lower, upper = domain.lower[name], domain.upper[name]
+                dataset_value = float(baseline[name].iloc[0])
+                overrides[name] = st.slider(
+                    f"{spec.label} ({spec.unit})" if spec.unit else spec.label,
+                    min_value=float(lower),
+                    max_value=float(upper),
+                    value=min(max(dataset_value, lower), upper),
+                    step=spec.step,
+                    format=f"%.{spec.decimals}f",
+                    key=_slider_key(district, name),
+                    help=(
+                        f"Dataset value for {district}: {spec.format(dataset_value)}. "
+                        f"Training range: {spec.format(lower)} – {spec.format(upper)}."
+                    ),
+                )
+
     changed = len(engine.changed_features(baseline, engine.build_scenario(df, district, overrides)))
-    sidebar.markdown(f"**{changed} of {len(engine.TUNABLE_FEATURES)} inputs changed**")
-    sidebar.button(
-        "Reset to dataset values",
-        on_click=_reset_sliders,
-        args=(district,),
-        width="stretch",
-        icon=":material/restart_alt:",
-        disabled=changed == 0,
+    with sidebar.container(key="sb_scenario"):
+        st.markdown(
+            theme.sidebar_card_head_html("Scenario", f"{changed} of {len(engine.TUNABLE_FEATURES)} changed"),
+            unsafe_allow_html=True,
+        )
+        st.button(
+            "Reset to dataset values",
+            on_click=_reset_sliders,
+            args=(district,),
+            width="stretch",
+            icon=":material/restart_alt:",
+            disabled=changed == 0,
+        )
+    # st.markdown rather than st.caption: caption text is a faded grey whose contrast is not verified.
+    sidebar.markdown(
+        '<div class="sb-foot">Sliders stay within the training range: beyond it, tree models silently freeze '
+        "their scores.</div>",
+        unsafe_allow_html=True,
     )
     return district, overrides
 
@@ -776,103 +793,128 @@ def render_dashboard() -> None:
     # Layout order: centered Nigehban brand header -> persistent SIMULATED SCENARIO banner -> district bar.
     st.markdown(theme.brand_header_html(), unsafe_allow_html=True)  # static markup only
     st.markdown(theme.banner_html(), unsafe_allow_html=True)  # static text only
-    st.markdown(theme.header_html(district, assessment.province, model_label), unsafe_allow_html=True)
     for message in critical:
         st.error(message)
 
-    # Scenario chips sit directly above the numbers they describe.
-    if assessment.modified_features:
-        chips = []
-        for name in assessment.modified_features:
-            spec = engine.TUNABLE_BY_NAME[name]
-            before = spec.format(float(assessment.baseline[name].iloc[0]))
-            after = spec.format(float(assessment.scenario[name].iloc[0]))
-            chips.append(f"{spec.label}: {before} → {after}")
-        st.markdown(theme.chips_html("Simulated inputs", chips), unsafe_allow_html=True)
-    else:
-        st.markdown(theme.chips_html("Scenario", ["Unmodified dataset inputs"]), unsafe_allow_html=True)
-    for warning in assessment.warnings:
-        if warning not in critical:
-            st.warning(warning)
-
-    cards = "".join(
-        theme.kpi_card_html(
-            engine.TARGET_LABELS[target],
-            prediction.label,
-            prediction.p_high,
-            assessment.baseline_predictions[target].p_high if assessment.modified_features else None,
-            bundle.high_thresholds[target],
+    # 01 · Risk overview: district bar, scenario chips, the three risk cards, exports.
+    with st.container(key="section_overview"):
+        st.markdown(
+            theme.page_section_head_html(
+                1, "Risk overview", "Predicted risk level for each hazard under the inputs set in the sidebar."
+            ),
+            unsafe_allow_html=True,
         )
-        for target, prediction in assessment.predictions.items()
-    )
-    st.markdown(f'<div class="kpi-grid">{cards}</div>', unsafe_allow_html=True)  # every dynamic value is escaped
+        st.markdown(theme.header_html(district, assessment.province, model_label), unsafe_allow_html=True)
+        if assessment.modified_features:
+            chips = []
+            for name in assessment.modified_features:
+                spec = engine.TUNABLE_BY_NAME[name]
+                before = spec.format(float(assessment.baseline[name].iloc[0]))
+                after = spec.format(float(assessment.scenario[name].iloc[0]))
+                chips.append(f"{spec.label}: {before} → {after}")
+            st.markdown(theme.chips_html("Simulated inputs", chips), unsafe_allow_html=True)
+        else:
+            st.markdown(theme.chips_html("Scenario", ["Unmodified dataset inputs"]), unsafe_allow_html=True)
+        for warning in assessment.warnings:
+            if warning not in critical:
+                st.warning(warning)
 
-    # Exports after the risk numbers: on a phone the columns stack, and risk must come before downloads.
-    _, csv_col, txt_col = st.columns([6, 2, 2], vertical_alignment="center")
-    slug = re.sub(r"[^a-z0-9]+", "-", district.lower()).strip("-")
-    csv_col.download_button(
-        "CSV",
-        engine.assessment_to_csv(assessment),
-        f"{slug}-assessment.csv",
-        "text/csv",
-        on_click="ignore",
-        width="stretch",
-        icon=":material/download:",
-        help="Download this assessment as CSV (one row per hazard)",
-    )
-    txt_col.download_button(
-        "Report",
-        engine.assessment_to_text(assessment),
-        f"{slug}-assessment.txt",
-        "text/plain",
-        on_click="ignore",
-        width="stretch",
-        icon=":material/description:",
-        help="Download this assessment as a plain-text report",
-    )
+        cards = "".join(
+            theme.kpi_card_html(
+                engine.TARGET_LABELS[target],
+                prediction.label,
+                prediction.p_high,
+                assessment.baseline_predictions[target].p_high if assessment.modified_features else None,
+                bundle.high_thresholds[target],
+            )
+            for target, prediction in assessment.predictions.items()
+        )
+        st.markdown(f'<div class="kpi-grid">{cards}</div>', unsafe_allow_html=True)  # every dynamic value is escaped
 
-    st.markdown(
-        theme.section_head_html(
-            "Assessment detail", "Choose a hazard: the explanation and the national map below both follow it."
-        ),
-        unsafe_allow_html=True,
-    )
-    target = st.segmented_control(
-        "Hazard",
-        options=list(bundle.targets),
-        format_func=lambda t: f"{engine.TARGET_LABELS[t]} · {assessment.predictions[t].label}",
-        default=bundle.targets[0],
-        required=True,
-        key="hazard",
-        label_visibility="collapsed",
-    )
-    left, right = st.columns([7, 5], gap="large")
-    with left, st.container(border=True):
-        render_explanation(assessment, target)
-    with right, st.container(border=True):
-        render_map_panel(national, assessment, target, layers)
-    with st.container(border=True):
-        render_profile_panel(assessment, df)
+        # Exports after the risk numbers: on a phone the columns stack, and risk must come before downloads.
+        note_col, csv_col, txt_col = st.columns([6, 2, 2], vertical_alignment="center")
+        note_col.markdown(
+            '<div class="toolbar-note">Download this assessment for your records.</div>', unsafe_allow_html=True
+        )
+        slug = re.sub(r"[^a-z0-9]+", "-", district.lower()).strip("-")
+        csv_col.download_button(
+            "CSV",
+            engine.assessment_to_csv(assessment),
+            f"{slug}-assessment.csv",
+            "text/csv",
+            on_click="ignore",
+            width="stretch",
+            icon=":material/download:",
+            help="Download this assessment as CSV (one row per hazard)",
+        )
+        txt_col.download_button(
+            "Report",
+            engine.assessment_to_text(assessment),
+            f"{slug}-assessment.txt",
+            "text/plain",
+            on_click="ignore",
+            width="stretch",
+            icon=":material/description:",
+            help="Download this assessment as a plain-text report",
+        )
 
-    st.markdown(
-        theme.section_head_html(
-            "Planning ahead", "National what-if tools: which districts would become High, and where hazards compound."
-        ),
-        unsafe_allow_html=True,
-    )
-    stress_tab, hotspot_tab = st.tabs(["Climate stress test", "Multi-hazard hotspots"])
-    with stress_tab:
-        render_stress_test(bundle, df, domain, data_sha256, layers)
-    with hotspot_tab:
-        render_hotspots(national, bundle, df, domain, data_sha256, layers)
+    # 02 · Why this assessment: hazard picker drives the explanation and the national map.
+    with st.container(key="section_detail"):
+        st.markdown(
+            theme.page_section_head_html(
+                2,
+                "Assessment detail",
+                "Choose a hazard: the explanation and the national map below both follow it.",
+            ),
+            unsafe_allow_html=True,
+        )
+        target = st.segmented_control(
+            "Hazard",
+            options=list(bundle.targets),
+            format_func=lambda t: f"{engine.TARGET_LABELS[t]} · {assessment.predictions[t].label}",
+            default=bundle.targets[0],
+            required=True,
+            key="hazard",
+            label_visibility="collapsed",
+        )
+        left, right = st.columns([7, 5], gap="medium")
+        with left, st.container(key="panel_explanation"):
+            render_explanation(assessment, target)
+        with right, st.container(key="panel_map"):
+            render_map_panel(national, assessment, target, layers)
+        with st.container(key="panel_profile"):
+            render_profile_panel(assessment, df)
 
-    st.markdown(theme.section_head_html("Model and data"), unsafe_allow_html=True)
-    model_tab, data_tab = st.tabs(["Model card", "Dataset labels"])
-    with model_tab:
-        render_model_card(bundle, issues)
-    with data_tab:
-        st.markdown("Synthetic labels stored in the dataset (training targets), not model predictions.")
-        st.dataframe(engine.dataset_labels_table(df), hide_index=True, width="stretch", height=360)
+    # 03 · Planning ahead.
+    with st.container(key="section_planning"):
+        st.markdown(
+            theme.page_section_head_html(
+                3,
+                "Planning ahead",
+                "National what-if tools: which districts would become High, and where hazards compound.",
+            ),
+            unsafe_allow_html=True,
+        )
+        stress_tab, hotspot_tab = st.tabs(["Climate stress test", "Multi-hazard hotspots"])
+        with stress_tab, st.container(key="panel_stress"):
+            render_stress_test(bundle, df, domain, data_sha256, layers)
+        with hotspot_tab, st.container(key="panel_hotspots"):
+            render_hotspots(national, bundle, df, domain, data_sha256, layers)
+
+    # 04 · Model and data.
+    with st.container(key="section_model"):
+        st.markdown(
+            theme.page_section_head_html(
+                4, "Model and data", "How the models were trained, checked and validated, and what they cannot do."
+            ),
+            unsafe_allow_html=True,
+        )
+        model_tab, data_tab = st.tabs(["Model card", "Dataset labels"])
+        with model_tab, st.container(key="panel_model_card"):
+            render_model_card(bundle, issues)
+        with data_tab, st.container(key="panel_dataset"):
+            st.markdown("Synthetic labels stored in the dataset (training targets), not model predictions.")
+            st.dataframe(engine.dataset_labels_table(df), hide_index=True, width="stretch", height=360)
 
 
 def main() -> None:

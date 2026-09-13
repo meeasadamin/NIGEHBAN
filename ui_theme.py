@@ -90,6 +90,10 @@ MAP_SELECTED_RING: Final[str] = TEXT_PRIMARY
 MAP_FAULT: Final[str] = "#78716C"  # stone-500: context layer, recessive
 MAP_COAST: Final[str] = "#94A3B8"  # slate-400: context layer, recessive
 
+#: Layout surfaces: each page section is a soft grey band; panels inside it are white cards.
+SECTION_BACKGROUND: Final[str] = "#F8FAFC"  # slate-50
+PANEL_SHADOW: Final[str] = "0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)"
+
 CHECK_OK_COLOR: Final[str] = "#006300"  # dataviz "success text" green
 CHECK_FAIL_COLOR: Final[str] = "#B91C1C"  # red-700
 
@@ -163,6 +167,10 @@ def contrast_requirements() -> tuple[ContrastRequirement, ...]:
         ContrastRequirement("brand small caps line (12-13px)", HEADER_EYEBROW, HEADER_STOPS, 4.5),
         ContrastRequirement("brand emblem eye (graphic)", EMBLEM_ACCENT, HEADER_STOPS, 3.0),
         ContrastRequirement("district bar title and meta", TEXT_PRIMARY, (PAGE_BACKGROUND,), 4.5),
+        ContrastRequirement("section number badge (15px bold)", HEADER_TITLE, (HEADER_STOPS[0],), 4.5),
+        ContrastRequirement("section title (22px bold)", TEXT_PRIMARY, (SECTION_BACKGROUND,), 4.5),
+        ContrastRequirement("section subtitle (14px)", TEXT_MUTED, (SECTION_BACKGROUND,), 4.5),
+        ContrastRequirement("sidebar card labels (12px)", TEXT_SECONDARY, (PAGE_BACKGROUND,), 4.5),
         ContrastRequirement("banner text (15-16px)", BANNER_TEXT, (BANNER_BACKGROUND,), 4.5),
         ContrastRequirement("banner accent rule (graphic)", BANNER_ACCENT, (BANNER_BACKGROUND,), 3.0),
         ContrastRequirement("scenario chip text (13px)", TEXT_PRIMARY, (CHIP_BACKGROUND,), 4.5),
@@ -208,11 +216,6 @@ def page_css() -> str:
 <style>
 /* Streamlit's fixed toolbar is 3.75rem tall; 4.25rem keeps the header band fully visible (measured in Edge). */
 [data-testid="stMainBlockContainer"] {{ padding-top: 4.25rem; padding-bottom: 3rem; max-width: 1320px; }}
-[data-testid="stSidebar"] .sidebar-group {{
-  color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; font-weight: 700; letter-spacing: 0.06em;
-  text-transform: uppercase; margin: 0.9rem 0 0.1rem 0; padding-top: 0.6rem; border-top: 1px solid {CHIP_BORDER};
-}}
-[data-testid="stSidebar"] .sidebar-group.first {{ border-top: 0; padding-top: 0; margin-top: 0; }}
 @font-face {{
   font-family: "Noto Nastaliq Urdu"; src: url("{URDU_FONT_URL}") format("truetype");
   font-weight: 400 700; font-display: swap;
@@ -300,6 +303,60 @@ def page_css() -> str:
 .checklist .check-label {{ color: {TEXT_PRIMARY}; font-weight: 600; font-size: {BODY_FONT_PX}px; }}
 .checklist .check-state {{ color: {TEXT_MUTED}; font-weight: 600; font-size: {SMALL_FONT_PX}px; margin-left: 0.4rem; }}
 .checklist .check-detail {{ color: {TEXT_MUTED}; font-size: 14px; overflow-wrap: anywhere; }}
+
+/* ---- Page sections: numbered grey bands so headings never run into data ---- */
+[class*="st-key-section_"] {{
+  background: {SECTION_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 18px;
+  padding: 1.1rem 1.25rem 1.3rem 1.25rem; margin-top: 1.4rem; gap: 0.9rem;
+}}
+.page-section-head {{
+  display: flex; align-items: flex-start; gap: 0.85rem; padding-bottom: 0.85rem;
+  border-bottom: 1px solid {HAIRLINE}; margin-bottom: 0.1rem;
+}}
+.page-section-head .num {{
+  flex: none; width: 2.1rem; height: 2.1rem; border-radius: 10px; background: {h0}; color: {HEADER_TITLE};
+  font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 0.1rem;
+}}
+.page-section-head .title {{ color: {TEXT_PRIMARY}; font-size: 22px; font-weight: 700; line-height: 1.25; }}
+.page-section-head .sub {{ color: {TEXT_MUTED}; font-size: 14px; line-height: 1.45; margin-top: 0.15rem; }}
+@media (max-width: 640px) {{
+  [class*="st-key-section_"] {{ padding: 0.9rem 0.8rem 1rem 0.8rem; border-radius: 14px; }}
+  .page-section-head .title {{ font-size: 19px; }}
+}}
+/* Panels inside a section: white cards. */
+[class*="st-key-panel_"] {{
+  background: {PAGE_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 14px;
+  box-shadow: {PANEL_SHADOW}; padding: 1rem 1.1rem;
+}}
+@media (max-width: 640px) {{ [class*="st-key-panel_"] {{ padding: 0.8rem 0.75rem; }} }}
+[class*="st-key-section_"] .app-header {{ margin-bottom: 0; }}
+[class*="st-key-section_"] [data-testid="stTabs"] [data-baseweb="tab-list"] {{ gap: 0.25rem; }}
+.toolbar-note {{ color: {TEXT_MUTED}; font-size: {SMALL_FONT_PX}px; padding-top: 0.55rem; }}
+
+/* ---- Sidebar ---- */
+[data-testid="stSidebar"] {{ background: {SECTION_BACKGROUND}; border-right: 1px solid {HAIRLINE}; }}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {{ padding-top: 0.5rem; }}
+.sb-brand {{
+  display: flex; align-items: center; gap: 0.7rem; background: linear-gradient(135deg, {h0} 0%, {h1} 100%);
+  border-radius: 14px; padding: 0.7rem 0.9rem; margin-bottom: 0.5rem;
+}}
+.sb-brand .brand-emblem {{ width: 30px; height: 35px; flex: none; }}
+.sb-brand .sb-name {{ color: {HEADER_TITLE}; font-size: 17px; font-weight: 700; letter-spacing: 0.2em; line-height: 1.2; }}
+.sb-brand .sb-sub {{ color: {HEADER_TITLE}; font-size: 12px; opacity: 1; letter-spacing: 0.04em; }}
+[data-testid="stSidebar"] [class*="st-key-sb_"] {{
+  background: {PAGE_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 14px;
+  box-shadow: {PANEL_SHADOW}; padding: 0.8rem 0.9rem 0.9rem 0.9rem; gap: 0.55rem;
+}}
+.sb-card-head {{ display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  padding-bottom: 0.45rem; margin-bottom: 0.35rem; border-bottom: 1px solid {HAIRLINE}; }}
+.sb-card-head .sb-label {{ color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; }}
+.sb-card-head .sb-count {{ background: {CHIP_BACKGROUND}; border: 1px solid {CHIP_BORDER}; color: {TEXT_PRIMARY};
+  border-radius: 999px; padding: 0.02rem 0.55rem; font-size: 12px; font-weight: 600; white-space: nowrap; }}
+.sb-meta {{ display: flex; flex-wrap: wrap; gap: 0.35rem; }}
+.sb-meta span {{ background: {CHIP_BACKGROUND}; border: 1px solid {CHIP_BORDER}; color: {TEXT_PRIMARY};
+  border-radius: 999px; padding: 0.05rem 0.55rem; font-size: 12px; }}
+.sb-foot {{ color: {TEXT_MUTED}; font-size: 12px; line-height: 1.5; padding: 0.2rem 0.2rem 0 0.2rem; }}
 </style>
 """
 
@@ -380,6 +437,38 @@ def section_head_html(title: str, subtitle: str = "", panel: bool = False) -> st
     sub = f'<div class="section-sub">{html.escape(subtitle)}</div>' if subtitle else ""
     css = "section-head panel" if panel else "section-head"
     return f'<div class="{css}"><div class="section-title">{html.escape(title)}</div>{sub}</div>'
+
+
+def page_section_head_html(number: int, title: str, subtitle: str = "") -> str:
+    """Numbered top-level section heading (used as the first element of a ``section_*`` container)."""
+    sub = f'<div class="sub">{html.escape(subtitle)}</div>' if subtitle else ""
+    return (
+        '<div class="page-section-head">'
+        f'<div class="num" aria-hidden="true">{number:02d}</div>'
+        f'<div><div class="title" role="heading" aria-level="2">{html.escape(title)}</div>{sub}</div>'
+        "</div>"
+    )
+
+
+def sidebar_brand_html() -> str:
+    """Compact brand block at the top of the sidebar."""
+    return (
+        '<div class="sb-brand">'
+        f"{emblem_svg()}"
+        '<div><div class="sb-name">NIGEHBAN</div><div class="sb-sub">Scenario controls</div></div>'
+        "</div>"
+    )
+
+
+def sidebar_card_head_html(label: str, count: str = "") -> str:
+    """Heading row of a sidebar card: an uppercase label and an optional count chip."""
+    badge = f'<span class="sb-count">{html.escape(count)}</span>' if count else ""
+    return f'<div class="sb-card-head"><span class="sb-label">{html.escape(label)}</span>{badge}</div>'
+
+
+def sidebar_meta_html(items: Sequence[str]) -> str:
+    """A row of small neutral chips (province, identifiers) under the district picker."""
+    return '<div class="sb-meta">' + "".join(f"<span>{html.escape(i)}</span>" for i in items) + "</div>"
 
 
 def kpi_card_html(
