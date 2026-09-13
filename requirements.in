@@ -1,0 +1,14 @@
+# Direct serving dependencies (Streamlit app). Compile the full pinned lock with:
+#   uv pip compile requirements.in --python-version 3.12 --universal -o requirements.txt
+# Audit F6.1: plotly is listed explicitly (v1 relied on catboost pulling it in);
+# folium/streamlit-folium removed (never imported); training-only libraries moved to requirements-dev.in.
+numpy==2.4.4
+pandas==3.0.2
+scikit-learn==1.8.0
+catboost==1.2.10
+shap==0.52.0
+joblib==1.5.3
+streamlit==1.63.0
+plotly==7.0.0
+# Transitive (shap/catboost) but pinned directly so serving and dev locks cannot diverge.
+matplotlib==3.10.8

@@ -1,0 +1,44 @@
+# CI for the Pakistan Multi-Hazard Risk Analyzer (audit F6.3: v1 had no tests or CI).
+# Every step runs against files committed in this repository; no network access
+# beyond installing the pinned lock is needed.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install pinned dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
+
+      - name: Lint and formatting
+        run: ruff check . && ruff format --check .
+
+      - name: Dataset is reproducible from its seed and reference layers
+        run: python generate_data.py --check
+
+      - name: Unit, integration, accessibility, and app smoke tests
+        run: pytest -m "not slow" -q
+
+      - name: Training pipeline smoke run (tiny search, output discarded)
+        run: pytest -m slow -q

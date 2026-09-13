@@ -1,0 +1,15 @@
+# Source files: normalise to LF everywhere.
+* text=auto eol=lf
+
+# Hashed artifacts must stay byte-identical on every checkout: the app compares their SHA-256
+# with values recorded at training time, and a CRLF conversion would trigger a false
+# "model trained on a different dataset" error.
+*.csv -text
+*.geojson -text
+*.sha256 -text
+*.json -text
+
+# Binary assets.
+*.pkl binary
+*.ttf binary
+*.png binary

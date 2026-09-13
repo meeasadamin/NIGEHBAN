@@ -1,0 +1,32 @@
+[project]
+name = "pakistan-multi-hazard-risk-analyzer"
+version = "2.0.0"
+description = "Explainable multi-hazard risk demonstrator for Pakistani districts (synthetic data)."
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["slow: end-to-end training run (~2 minutes)"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["archive", "analysis.ipynb"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "PT", "SIM", "RUF"]
+ignore = [
+    "E501",   # code is wrapped by `ruff format`; long user-facing strings stay on one line for grep-ability
+    "S101",   # assert is the pytest idiom
+    "S301",   # joblib/pickle load is guarded by a SHA-256 check (risk_engine.load_bundle)
+    "S603",   # subprocess with a fixed argument list in tests
+    "RUF001", # intentional Unicode symbols (▲ ◆ ● °C) in user-facing strings
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "PT018"]

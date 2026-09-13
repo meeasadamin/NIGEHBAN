@@ -1,0 +1,29 @@
+# Streamlit configuration (audit F4.3 hardening, F5 verifiable contrast).
+
+[server]
+headless = true
+enableXsrfProtection = true
+maxUploadSize = 1          # the app accepts no uploads
+runOnSave = false
+enableStaticServing = true  # serves static/fonts/ for the Nigehban Urdu wordmark (no external font request)
+
+[client]
+showErrorDetails = "none"  # never show tracebacks to users; errors are logged server-side
+toolbarMode = "viewer"
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+magicEnabled = false
+
+# Light theme is locked so every text/background pair can be verified against a
+# known page colour (see ui_theme.py and tests/test_accessibility.py). Dark mode
+# is not supported in v2 because its contrast would be unverified.
+[theme]
+base = "light"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F1F5F9"
+textColor = "#0F172A"
+primaryColor = "#0077BB"
+
