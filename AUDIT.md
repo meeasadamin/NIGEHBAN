@@ -398,6 +398,21 @@ Each change was driven by a real-browser render (Edge via Playwright at 390px an
 | P2 | Multi-hazard hotspots: districts High for 2+ hazards, current or under the stress scenario, table plus map | 10 districts now, 15 under the default scenario | `tests/test_risk_engine.py::test_hotspots_are_districts_high_for_two_or_more_hazards`, `tests/test_app_smoke.py::test_planning_tools_render_with_hypothetical_labels` |
 | P3 | Browser favicon: the header's SVG emblem on a flag-green tile, rendered to PNG by `scripts/build_favicon.py` and set as `page_icon` | Edge: tab title and icon link served by Streamlit | `tests/test_app_smoke.py::test_favicon_is_the_nigehban_emblem_png` |
 
+### Layout pass and whole-project re-audit (2026-09-14)
+
+| ID | Change or finding | Evidence | Verified by |
+|---|---|---|---|
+| L1 | **Change (user request):** page split into four numbered section bands (01 Risk overview, 02 Assessment detail, 03 Planning ahead, 04 Model and data), content in white panels, sidebar regrouped into brand, District, Climate, Land and exposure, and Scenario cards | Edge at 1440px and 390px: no horizontal overflow | `scripts/check_layout.py` (all viewports pass); 4 new colour pairs in `tests/test_accessibility.py::test_contrast_meets_wcag_aa` |
+| A1 | **Defect (doc vs code):** F5.4 above says phones get "an on-page hint" for the collapsed sidebar; no hint existed in the code. **Fix:** phone-only note (CSS media query, ≤640px) at the top of section 01 | Edge: visible at 390px, hidden at 1440px | `tests/test_app_smoke.py::test_phone_hint_points_to_the_sidebar_controls` |
+| A2 | **Defect (accessibility):** heading order started with a level-2 section title before the level-1 district title. **Fix:** Nigehban wordmark is the single h1, section titles h2, district bar h3 | Edge heading list after fix: NIGEHBAN, Risk overview, district, Assessment detail, … | `tests/test_app_smoke.py::test_heading_levels_never_skip` |
+| A3 | **Defect (security):** a model pickle loaded with no trusted digest was reported only as an `info` provenance issue, so the page looked normal although `joblib.load` had executed an unverified file. **Fix:** raised to `critical`, which shows an error on the page | Unit test loads a copy without its manifest | `tests/test_risk_engine.py::test_unverified_model_is_a_critical_provenance_issue` |
+| A4 | **Defect (docs):** README screenshots predated the Nigehban header and the layout pass. **Fix:** re-rendered from the running app in Edge | `docs/screenshots/*.png` | Inspected by eye |
+| A5 | **Finding, not changed:** hyperparameter search (`train.py::tune`) maximises argmax macro-F1, but the deployed rule is the recall-tuned threshold, so model selection is not aligned with the deployed decision. Reported metrics stay honest (the rule is evaluated on outer folds); aligning the objective needs a retrain and changes every number above | `train.py` `tune()` objective | — |
+| A6 | **Finding, not changed:** the deployed High threshold is chosen on out-of-fold predictions of hyperparameters that were tuned on all 150 rows, so the threshold itself is mildly optimistic. It does not affect any reported metric (nested CV picks its own thresholds per outer fold) | `train.py::train_all` | — |
+| A7 | **Confirmed resolved:** the note after U7 (temperature moving seismic P(High)) was fixed by N1; left in place as the historical record | Edge: Gwadar at maximum temperature, Seismic card ■ +0.0 pts | `tests/test_risk_engine.py::test_moving_unrelated_sliders_leaves_seismic_unchanged` |
+
+Re-audit checks that passed with no change: ruff lint and format on all 20 files; 123 tests including slow training tests; `generate_data.py --check` reproduces the committed CSV byte-for-byte; installed library versions equal the `requirements.txt` pins; README metric tables equal `models/metrics.json`; nested CV keeps the outer test fold out of tuning, calibration, and threshold choice; no secrets tracked by git; Edge session with district change and slider at maximum logged no console errors, failed requests, or exceptions.
+
 ### Requested items that cannot be completed from repository data
 
 | Item | Why | Smallest real input needed |

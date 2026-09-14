@@ -613,9 +613,10 @@ def audit_provenance(bundle: ModelBundle, df: pd.DataFrame, data_sha256: str) ->
             )
 
     if not bundle.integrity_verified:
+        # Critical, not info: the pickle was executed without a digest check, so the served model is unproven.
         issues.append(
             ProvenanceIssue(
-                "info",
+                "critical",
                 "integrity",
                 "No trusted SHA-256 digest is configured, so the model file's integrity is unverified.",
             )

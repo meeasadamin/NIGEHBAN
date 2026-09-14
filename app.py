@@ -804,6 +804,7 @@ def render_dashboard() -> None:
             ),
             unsafe_allow_html=True,
         )
+        st.markdown(theme.phone_hint_html(), unsafe_allow_html=True)  # static markup only
         st.markdown(theme.header_html(district, assessment.province, model_label), unsafe_allow_html=True)
         if assessment.modified_features:
             chips = []

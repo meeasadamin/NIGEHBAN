@@ -50,6 +50,19 @@ def test_tampered_model_is_refused_before_unpickling(tmp_path: Path) -> None:
         engine.load_bundle(copy)
 
 
+def test_unverified_model_is_a_critical_provenance_issue(
+    df: pd.DataFrame, data_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unpickled model with no trusted digest must be surfaced on the page, not only in the model card."""
+    monkeypatch.delenv("NDMA_MODEL_SHA256", raising=False)
+    copy = tmp_path / "bundle.pkl"
+    shutil.copyfile(engine.default_model_path(), copy)  # no manifest copied
+    unverified = engine.load_bundle(copy)
+    assert not unverified.integrity_verified
+    issues = engine.audit_provenance(unverified, df, engine.file_sha256(data_path))
+    assert any(i.check == "integrity" and i.severity == "critical" for i in issues)
+
+
 def test_legacy_v1_bundle_is_rejected() -> None:
     with pytest.raises(engine.SchemaError, match="schema version"):
         engine.load_bundle(ROOT / "archive" / "v1" / "best_hazard_pipeline_v1.pkl")

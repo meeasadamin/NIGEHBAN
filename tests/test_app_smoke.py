@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+import re
 from pathlib import Path
 
 import pytest
@@ -26,7 +28,19 @@ def test_app_renders_without_errors(app: AppTest) -> None:
     assert not app.exception
     assert [e.value for e in app.error] == []
     header = next(m for m in _markdown(app) if 'class="app-header"' in m)
-    assert 'class="app-title" role="heading" aria-level="1">Islamabad<' in header
+    assert 'class="app-title" role="heading" aria-level="3">Islamabad<' in header
+
+
+def test_heading_levels_never_skip(app: AppTest) -> None:
+    """One h1 first, then no jump of more than one level (WCAG 1.3.1 heading structure)."""
+    levels = [int(level) for m in _markdown(app) for level in re.findall(r'role="heading" aria-level="(\d)"', m)]
+    assert levels[0] == 1 and levels.count(1) == 1
+    assert all(b - a <= 1 for a, b in itertools.pairwise(levels))
+
+
+def test_phone_hint_points_to_the_sidebar_controls(app: AppTest) -> None:
+    hint = next(m for m in _markdown(app) if 'class="phone-hint"' in m)
+    assert "top left" in hint
 
 
 def test_layout_order_brand_then_banner_then_district(app: AppTest) -> None:

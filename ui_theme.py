@@ -331,6 +331,10 @@ def page_css() -> str:
 @media (max-width: 640px) {{ [class*="st-key-panel_"] {{ padding: 0.8rem 0.75rem; }} }}
 [class*="st-key-section_"] .app-header {{ margin-bottom: 0; }}
 [class*="st-key-section_"] [data-testid="stTabs"] [data-baseweb="tab-list"] {{ gap: 0.25rem; }}
+/* Phones: Streamlit collapses the sidebar, so say where the controls are. Hidden on wider screens. */
+.phone-hint {{ display: none; background: {CHIP_BACKGROUND}; border: 1px solid {CHIP_BORDER}; color: {TEXT_PRIMARY};
+  border-radius: 10px; padding: 0.5rem 0.75rem; font-size: 14px; line-height: 1.45; }}
+@media (max-width: 640px) {{ .phone-hint {{ display: block; }} }}
 .toolbar-note {{ color: {TEXT_MUTED}; font-size: {SMALL_FONT_PX}px; padding-top: 0.55rem; }}
 
 /* ---- Sidebar ---- */
@@ -395,7 +399,7 @@ def brand_header_html() -> str:
         f"{emblem_svg()}"
         '<div class="brand-urdu" dir="rtl" lang="ur">نگہبان</div>'
         "</div>"
-        '<div class="brand-latin" lang="en">NIGEHBAN</div>'
+        '<div class="brand-latin" lang="en" role="heading" aria-level="1">NIGEHBAN</div>'
         '<div class="brand-tagline">Multi-hazard risk intelligence for Pakistan — flood, heatwave, seismic</div>'
         '<div class="brand-note">Independent portfolio project · not an official NDMA or PDMA system</div>'
         "</div>"
@@ -407,7 +411,8 @@ def header_html(district: str, province: str, model_label: str) -> str:
     return (
         '<div class="app-header">'
         "<div>"
-        f'<div class="app-title" role="heading" aria-level="1">{html.escape(district)}</div>'
+        # Level 3: page h1 is the Nigehban wordmark, and this bar sits inside the level-2 "Risk overview" section.
+        f'<div class="app-title" role="heading" aria-level="3">{html.escape(district)}</div>'
         f'<div class="app-subtitle">{html.escape(province)} · Flood, heatwave and seismic risk assessment</div>'
         "</div>"
         f'<div class="app-meta">{html.escape(model_label)}</div>'
@@ -447,6 +452,14 @@ def page_section_head_html(number: int, title: str, subtitle: str = "") -> str:
         f'<div class="num" aria-hidden="true">{number:02d}</div>'
         f'<div><div class="title" role="heading" aria-level="2">{html.escape(title)}</div>{sub}</div>'
         "</div>"
+    )
+
+
+def phone_hint_html() -> str:
+    """Phone-only note pointing to the collapsed sidebar (display is controlled by a CSS media query)."""
+    return (
+        '<div class="phone-hint" role="note"><strong>To change the district or inputs,</strong> '
+        "tap the <strong>»</strong> button at the top left to open the controls.</div>"
     )
 
 
