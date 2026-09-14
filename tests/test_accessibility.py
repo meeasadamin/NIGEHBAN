@@ -84,6 +84,36 @@ def test_profile_parts_state_meaning_in_text_not_only_graphics() -> None:
     assert '<th scope="rowgroup" colspan="2">Group &lt;1&gt;' in table and '<tr class="changed">' in table
 
 
+def test_profile_card_flags_standouts_and_changes_in_words() -> None:
+    card = theme.profile_card_html(
+        label="Population <density>",
+        value="7,144 /km²",
+        dataset_value="6,000 /km²",
+        province_median="3,000 /km²",
+        vs_province_pct=138.0,
+        position=1.0,
+        province_position=0.4,
+        low="11 /km²",
+        high="7,144 /km²",
+        share_below=0.99,
+        share_above=0.0,
+    )
+    assert 'class="pcard changed standout"' in card and "★ Stands out" in card and "Changed" in card
+    assert "Dataset value: 6,000 /km²" in card and "Highest 1% in Pakistan" in card
+    assert "138% above province" in card and "Population &lt;density&gt;" in card
+    assert "higher than 99% of districts" in card  # rank sentence in the range bar's aria-label
+    assert theme.rank_label(0.05, 0.9) == "Lowest 10% in Pakistan"
+
+
+def test_every_section_accent_is_distinct_from_the_level_palette() -> None:
+    accents = {a.accent.upper() for a in theme.SECTION_ACCENTS.values()}
+    assert len(accents) == len(theme.SECTION_ACCENTS)
+    assert not accents & {c.upper() for c in theme.LEVEL_COLORS.values()}
+    css = theme.page_css()
+    for name in theme.SECTION_ACCENTS:
+        assert f".st-key-section_{name} {{ --accent:" in css
+
+
 def test_model_card_headings_have_icons_and_escaped_badges() -> None:
     head = theme.card_head_html("alert", "Limits", "sub", badge=("<b>", "changed"), tone="warn")
     assert "<svg" in head and 'class="card-head warn"' in head and "&lt;b&gt;" in head

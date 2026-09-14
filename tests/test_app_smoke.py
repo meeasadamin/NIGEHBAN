@@ -66,9 +66,17 @@ def test_hazard_selector_scopes_explanation_and_map(app: AppTest) -> None:
     assert selector.value == "flood_risk"
     selector.set_value("seismic_risk").run()
     assert not app.exception
-    heads = [m for m in _markdown(app) if 'class="section-head panel"' in m]
-    assert any("Why the seismic score looks like this" in m for m in heads)
-    assert any("Where High seismic risk is modelled" in m for m in heads)
+    heads = [m for m in _markdown(app) if 'class="panel-head"' in m]
+    assert any("What drives the seismic score" in m for m in heads)
+    assert any("Where seismic risk is High" in m for m in heads)
+
+
+def test_district_profile_groups_every_input_into_cards(app: AppTest) -> None:
+    profile = next(m for m in _markdown(app) if 'class="pgroups"' in m)
+    assert profile.count('class="pgroup"') == 3
+    assert profile.count('<div class="pcard') == len(engine.PROFILE_FEATURES)
+    for title in ("Climate", "Land and exposure", "Geography"):
+        assert f'<span class="pg-title">{title}</span>' in profile
 
 
 def test_model_card_checklist_shows_every_check_passing(app: AppTest) -> None:

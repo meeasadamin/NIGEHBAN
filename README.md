@@ -200,7 +200,7 @@ Both tools label themselves **HYPOTHETICAL SCENARIO — what-if analysis, not a 
 | Waterfall labels and values (13px) | `#334155` on white | 10.35:1 | 4.5:1 |
 | Map: High / other districts | `#CC3311` / `#64748B` on white | 5.19 / 4.76:1 | 3:1 (graphic) |
 
-71 pairs are checked in total; the table lists the ones most likely to be questioned. `#CC6677` does **not** meet 4.5:1, so it is used only as 28px bold text and as a graphic. The light theme is locked in `.streamlit/config.toml` because contrast in a dark theme has not been verified.
+93 pairs are checked in total; the table lists the ones most likely to be questioned. `#CC6677` does **not** meet 4.5:1, so it is used only as 28px bold text and as a graphic. The light theme is locked in `.streamlit/config.toml` because contrast in a dark theme has not been verified.
 
 **A limit of the specified palette, and how the UI handles it.** Checked with a colour-separation validator, Medium `#CC6677` and High `#CC3311` are only ΔE 11.8 apart for *normal* vision (the floor for telling marks apart by colour is 15). On the KPI tiles that is acceptable, because the level word and shape are always printed. On the map, where dots sit side by side, it is not, so the map uses emphasis encoding instead: High in `#CC3311`, every other district in slate `#64748B` (ΔE 22.5 normal vision, 16.2 under colour-blindness simulation), with a legend and a table view.
 

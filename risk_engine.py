@@ -1311,6 +1311,7 @@ def district_profile(df: pd.DataFrame, assessment: Assessment) -> pd.DataFrame:
         low, high = float(df[name].min()), float(df[name].max())
         rows.append(
             {
+                "feature": name,
                 "Input": spec.label,
                 "This scenario": spec.format(value),
                 "Changed": name in assessment.modified_features,

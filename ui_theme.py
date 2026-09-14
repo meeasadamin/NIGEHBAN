@@ -106,8 +106,38 @@ MAP_SELECTED_RING: Final[str] = TEXT_PRIMARY
 MAP_FAULT: Final[str] = "#78716C"  # stone-500: context layer, recessive
 MAP_COAST: Final[str] = "#94A3B8"  # slate-400: context layer, recessive
 
-#: Layout surfaces: each page section is a soft grey band; panels inside it are white cards.
-SECTION_BACKGROUND: Final[str] = "#F8FAFC"  # slate-50
+#: Layout surfaces: a soft green-grey page, white panels on it (one level of nesting only).
+SECTION_BACKGROUND: Final[str] = "#F8FAFC"  # slate-50: sidebar, table headers, sub-cards
+PAGE_TINT: Final[str] = "#F3F6F4"  # main page ground behind sections and panels
+PANEL_BORDER: Final[str] = "#E1E8E4"
+
+#: Nigehban signature: the gold of the emblem's eye, used as a short rule under every section heading
+#: (decorative only, never text) and for "stands out" flags (dark gold text on a light gold ground).
+GOLD: Final[str] = EMBLEM_ACCENT
+GOLD_SOFT: Final[str] = "#FBF3DA"
+GOLD_TEXT: Final[str] = "#6B4A00"
+
+
+@dataclass(frozen=True, slots=True)
+class SectionAccent:
+    """Colour identity of one page section: ``accent`` (text, icons), ``deep`` (gradient end), ``soft`` (tint)."""
+
+    accent: str
+    deep: str
+    soft: str
+
+
+#: One accent per section so each part of the page is recognisable at a glance. None of these hues is a
+#: risk-level colour (blue / pink / red), so structure is never confused with data.
+SECTION_ACCENTS: Final[dict[str, SectionAccent]] = {
+    "overview": SectionAccent("#01411C", "#0A5C36", "#E8F3EC"),  # flag green
+    "detail": SectionAccent("#0F766E", "#115E59", "#E3F2EF"),  # teal
+    "planning": SectionAccent("#6D28D9", "#5B21B6", "#EFE9FB"),  # violet
+    "model": SectionAccent("#854D0E", "#713F12", "#FBF3DA"),  # deep gold
+}
+
+#: Spacing scale (rem) used for every gap and padding on the page.
+SPACE: Final[dict[str, float]] = {"xs": 0.35, "sm": 0.6, "md": 1.0, "lg": 1.5, "xl": 2.75}
 PANEL_SHADOW: Final[str] = "0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)"
 
 CHECK_OK_COLOR: Final[str] = "#006300"  # dataviz "success text" green
@@ -152,8 +182,12 @@ def contrast_ratio(first: str, second: str) -> float:
 
 
 def card_surfaces() -> tuple[str, ...]:
-    """Opaque colours actually behind card content: each gradient stop composited over the page."""
-    return tuple(composite(color, alpha, PAGE_BACKGROUND) for color, alpha in CARD_GRADIENT_STOPS)
+    """Opaque colours actually behind card content: each gradient stop composited over white and the page tint."""
+    return tuple(
+        composite(color, alpha, ground)
+        for color, alpha in CARD_GRADIENT_STOPS
+        for ground in (PAGE_BACKGROUND, PAGE_TINT)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,9 +217,13 @@ def contrast_requirements() -> tuple[ContrastRequirement, ...]:
         ContrastRequirement("brand small caps line (12-13px)", HEADER_EYEBROW, HEADER_STOPS, 4.5),
         ContrastRequirement("brand emblem eye (graphic)", EMBLEM_ACCENT, HEADER_STOPS, 3.0),
         ContrastRequirement("district bar title and meta", TEXT_PRIMARY, (PAGE_BACKGROUND,), 4.5),
-        ContrastRequirement("section number badge (15px bold)", HEADER_TITLE, (HEADER_STOPS[0],), 4.5),
-        ContrastRequirement("section title (22px bold)", TEXT_PRIMARY, (SECTION_BACKGROUND,), 4.5),
-        ContrastRequirement("section subtitle (14px)", TEXT_MUTED, (SECTION_BACKGROUND,), 4.5),
+        ContrastRequirement("section title (28px bold)", TEXT_PRIMARY, (PAGE_TINT,), 4.5),
+        ContrastRequirement(
+            "section subtitle, chip labels and notes on the page (13-15px)", TEXT_MUTED, (PAGE_TINT,), 4.5
+        ),
+        ContrastRequirement("text on the page tint (tabs, labels)", TEXT_SECONDARY, (PAGE_TINT,), 4.5),
+        ContrastRequirement("panel body text", TEXT_PRIMARY, (PAGE_BACKGROUND,), 4.5),
+        ContrastRequirement("'stands out' flag (11px bold)", GOLD_TEXT, (GOLD_SOFT,), 4.5),
         ContrastRequirement("sidebar card labels (12px)", TEXT_SECONDARY, (PAGE_BACKGROUND,), 4.5),
         ContrastRequirement("banner text (15-16px)", BANNER_TEXT, (BANNER_BACKGROUND,), 4.5),
         ContrastRequirement("banner accent rule (graphic)", BANNER_ACCENT, (BANNER_BACKGROUND,), 3.0),
@@ -244,6 +282,17 @@ def contrast_requirements() -> tuple[ContrastRequirement, ...]:
         ContrastRequirement("checklist pass mark (graphic + word)", CHECK_OK_COLOR, white, 3.0),
         ContrastRequirement("checklist fail mark (graphic + word)", CHECK_FAIL_COLOR, white, 3.0),
     ]
+    for name, section in SECTION_ACCENTS.items():
+        grounds = (PAGE_BACKGROUND, PAGE_TINT, section.soft, LIMITS_BACKGROUND)
+        requirements += [
+            ContrastRequirement(f"{name} accent: eyebrow and rank text (12px bold)", section.accent, grounds, 4.5),
+            ContrastRequirement(
+                f"{name} accent: white number and icons", HEADER_TITLE, (section.accent, section.deep), 4.5
+            ),
+            ContrastRequirement(f"{name} accent: panel top rule (graphic)", section.accent, (PAGE_TINT,), 3.0),
+            ContrastRequirement(f"{name} accent: text on soft tint", TEXT_PRIMARY, (section.soft,), 4.5),
+            ContrastRequirement(f"{name} accent: labels on soft tint", TEXT_SECONDARY, (section.soft,), 4.5),
+        ]
     for level, color in LEVEL_COLORS.items():
         requirements.append(
             ContrastRequirement(f"{level} level word ({LEVEL_FONT_PX}px bold = large text)", color, surfaces, 3.0)
@@ -271,17 +320,36 @@ def page_css() -> str:
     """Return the ``<style>`` block injected once per page."""
     (c0, a0), (c1, a1) = CARD_GRADIENT_STOPS
     h0, h1 = HEADER_STOPS
+    s = SPACE
+    accents = "\n".join(
+        f".st-key-section_{name} {{ --accent: {a.accent}; --accent-deep: {a.deep}; --accent-soft: {a.soft}; }}"
+        for name, a in SECTION_ACCENTS.items()
+    )
     return f"""
 <style>
-/* Streamlit's fixed toolbar is 3.75rem tall; 4.25rem keeps the header band fully visible (measured in Edge). */
-[data-testid="stMainBlockContainer"] {{ padding-top: 4.25rem; padding-bottom: 3rem; max-width: 1320px; }}
+:root {{
+  --accent: {h0}; --accent-deep: {h1}; --accent-soft: {REAL_BADGE_BACKGROUND};
+  --s-xs: {s["xs"]}rem; --s-sm: {s["sm"]}rem; --s-md: {s["md"]}rem; --s-lg: {s["lg"]}rem; --s-xl: {s["xl"]}rem;
+}}
+{accents}
+/* Page ground and top spacing. Streamlit's header bar is made transparent so the brand band can start
+   near the top on wide screens; its only desktop control (the menu) sits right of the centred band.
+   Phones keep the full offset because the sidebar toggle and logo icon live in that bar. */
+[data-testid="stAppViewContainer"], [data-testid="stMain"] {{ background: {PAGE_TINT}; }}
+[data-testid="stHeader"] {{ background: transparent; }}
+[data-testid="stMainBlockContainer"] {{ padding-top: var(--s-md); padding-bottom: var(--s-xl); max-width: 1320px; }}
+[data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"] {{ gap: var(--s-md); }}
+@media (max-width: 640px) {{ [data-testid="stMainBlockContainer"] {{ padding-top: 3.75rem; }} }}
+/* The element holding this <style> tag renders nothing but would still take a flex gap. */
+[data-testid="stElementContainer"]:has(style) {{ display: none; }}
 @font-face {{
   font-family: "Noto Nastaliq Urdu"; src: url("{URDU_FONT_URL}") format("truetype");
   font-weight: 400 700; font-display: swap;
 }}
 .brand-header {{
   background: linear-gradient(135deg, {h0} 0%, {h1} 100%); border-radius: 16px;
-  padding: 0.6rem 1.25rem 1rem 1.25rem; margin: 0 0 0.75rem 0; text-align: center;
+  padding: 0.35rem 1.25rem 1rem 1.25rem; margin: 0; text-align: center;
+  box-shadow: 0 10px 30px rgba(1, 65, 28, 0.18); border-bottom: 4px solid {GOLD};
   display: flex; flex-direction: column; align-items: center;
 }}
 .brand-header .brand-row {{ display: flex; align-items: center; justify-content: center; gap: 0.9rem; flex-wrap: wrap; }}
@@ -302,11 +370,12 @@ def page_css() -> str:
   .brand-header .brand-emblem {{ width: 44px; height: 50px; }}
 }}
 .app-header {{
-  background: {PAGE_BACKGROUND}; border: 1px solid {HAIRLINE}; border-left: 6px solid {h0}; border-radius: 12px;
-  padding: 0.7rem 1.1rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;
-  gap: 0.25rem 1.5rem; margin: 0 0 0.9rem 0;
+  background: {PAGE_BACKGROUND}; border: 1px solid {PANEL_BORDER}; border-left: 6px solid var(--accent); border-radius: 16px;
+  padding: var(--s-md) var(--s-lg); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: var(--s-xs) var(--s-lg); margin: 0; box-shadow: {PANEL_SHADOW};
 }}
-.app-header .app-title {{ color: {TEXT_PRIMARY}; font-size: 28px; font-weight: 700; line-height: 1.2; margin: 0; }}
+.app-header .app-title {{ color: {TEXT_PRIMARY}; font-size: 30px; font-weight: 800; line-height: 1.15; margin: 0;
+  letter-spacing: -0.01em; }}
 .app-header .app-subtitle {{ color: {TEXT_SECONDARY}; font-size: {BODY_FONT_PX}px; }}
 .app-header .app-meta {{ color: {TEXT_MUTED}; font-size: {SMALL_FONT_PX}px; text-align: right; line-height: 1.5; }}
 @media (max-width: 640px) {{
@@ -315,30 +384,40 @@ def page_css() -> str:
 }}
 .ndma-banner {{
   background: {BANNER_BACKGROUND}; color: {BANNER_TEXT}; border-left: 6px solid {BANNER_ACCENT};
-  border-radius: 10px; padding: 0.6rem 1rem; margin: 0 0 1rem 0; font-size: {BODY_FONT_PX}px; line-height: 1.45;
+  border-radius: 12px; padding: var(--s-sm) var(--s-md); margin: 0; font-size: {BODY_FONT_PX}px; line-height: 1.45;
 }}
 .ndma-banner strong {{ letter-spacing: 0.02em; }}
-.chip-row {{ display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; min-height: 2.5rem; }}
+.chip-row {{ display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }}
 .chip-row .chip-label {{ color: {TEXT_MUTED}; font-size: {SMALL_FONT_PX}px; font-weight: 600; margin-right: 0.2rem; }}
 .chip-row .chip {{ background: {CHIP_BACKGROUND}; border: 1px solid {CHIP_BORDER}; color: {TEXT_PRIMARY};
   border-radius: 999px; padding: 0.15rem 0.65rem; font-size: {SMALL_FONT_PX}px; }}
-.section-head {{ margin: 1.25rem 0 0.35rem 0; }}
-.section-head .section-title {{ color: {TEXT_PRIMARY}; font-size: 20px; font-weight: 700; }}
-.section-head .section-sub {{ color: {TEXT_MUTED}; font-size: 14px; }}
-.section-head.panel {{ margin: 0 0 0.5rem 0; padding-bottom: 0.65rem; border-bottom: 1px solid {HAIRLINE}; }}
-.section-head.panel .section-title {{ font-size: 18px; line-height: 1.3; }}
-.section-head.panel .section-sub {{ margin-top: 0.1rem; line-height: 1.45; }}
-.sub-head {{ color: {TEXT_PRIMARY}; font-size: 15px; font-weight: 700; margin: 0.75rem 0 0 0; }}
+/* ---- Panel headings: accent icon tile, coloured eyebrow, bold title, one-line subtitle ---- */
+.panel-head {{ display: flex; align-items: flex-start; gap: var(--s-md); padding-bottom: var(--s-md);
+  border-bottom: 1px solid {HAIRLINE}; }}
+.panel-head .ph-ico {{ flex: none; width: 2.75rem; height: 2.75rem; border-radius: 13px; color: {HEADER_TITLE};
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%); display: flex; align-items: center;
+  justify-content: center; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14); }}
+.panel-head .ph-ico svg {{ width: 1.35rem; height: 1.35rem; }}
+.panel-head .ph-text {{ min-width: 0; flex: 1; }}
+.panel-head .ph-eyebrow {{ color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: 0.1em;
+  text-transform: uppercase; line-height: 1.3; }}
+.panel-head .ph-title {{ color: {TEXT_PRIMARY}; font-size: 21px; font-weight: 800; line-height: 1.25; letter-spacing: -0.01em;
+  margin-top: 0.1rem; }}
+.panel-head .ph-sub {{ color: {TEXT_MUTED}; font-size: 14px; line-height: 1.5; margin-top: 0.2rem; }}
+@media (max-width: 640px) {{ .panel-head .ph-title {{ font-size: 18px; }} .panel-head .ph-ico {{ width: 2.25rem; height: 2.25rem; }} }}
+.sub-head {{ display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.2rem 0.5rem; color: {TEXT_PRIMARY};
+  font-size: 16px; font-weight: 800; margin: 0; }}
+.sub-head::before {{ content: ""; align-self: center; width: 4px; height: 1.05em; border-radius: 2px; background: var(--accent); }}
 .pill-row {{ display: flex; flex-wrap: wrap; gap: 0.3rem; }}
 .two-line {{ display: flex; flex-direction: column; line-height: 1.3; }}
 .two-line .p {{ font-weight: 600; color: {TEXT_PRIMARY}; white-space: nowrap; }}
 .two-line .s {{ color: {TEXT_MUTED}; font-size: 13px; white-space: nowrap; }}
 .data-table .in-range {{ color: {TEXT_MUTED}; font-size: 13px; white-space: nowrap; }}
-.sub-head .sub-note {{ color: {TEXT_MUTED}; font-size: 13px; font-weight: 400; margin-left: 0.4rem; }}
+.sub-head .sub-note {{ color: {TEXT_MUTED}; font-size: 13px; font-weight: 500; }}
 .note {{ color: {TEXT_MUTED}; font-size: 13px; line-height: 1.55; }}
 
 /* ---- KPI cards: speedometer gauge for P(High) ---- */
-.kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin: 0.25rem 0 0.25rem 0; }}
+.kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--s-md); margin: 0; }}
 .kpi-card {{
   background: linear-gradient(160deg, {_rgba(c0, a0)} 0%, {_rgba(c1, a1)} 100%);
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
@@ -407,17 +486,17 @@ def page_css() -> str:
 .pbar .val {{ min-width: 3.4rem; text-align: right; font-weight: 600; }}
 
 /* ---- Stat tiles, insight callout, chart legend ---- */
-.stat-tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.75rem;
-  margin: 0.25rem 0 0.35rem 0; }}
-.stat-tile {{ background: {PAGE_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 12px; padding: 0.7rem 0.95rem;
-  box-shadow: {PANEL_SHADOW}; }}
-.stat-tile.lead {{ border-top: 4px solid {HEADER_STOPS[0]}; }}
-.stat-tile .v {{ color: {TEXT_PRIMARY}; font-size: 28px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }}
-.stat-tile .l {{ color: {TEXT_MUTED}; font-size: 13px; line-height: 1.35; margin-top: 0.1rem; }}
-.insight {{ background: {INSIGHT_BACKGROUND}; border-left: 4px solid {HEADER_STOPS[0]}; border-radius: 10px;
-  padding: 0.7rem 0.95rem; color: {TEXT_PRIMARY}; font-size: {BODY_FONT_PX}px; line-height: 1.55; }}
-.insight .insight-label {{ display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
-  text-transform: uppercase; color: {TEXT_SECONDARY}; margin-bottom: 0.15rem; }}
+.stat-tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--s-sm); margin: 0; }}
+.stat-tile {{ background: {PAGE_BACKGROUND}; border: 1px solid {PANEL_BORDER}; border-radius: 14px; padding: var(--s-sm) var(--s-md); }}
+.stat-tile.lead {{ background: var(--accent-soft); border-color: transparent; }}
+.stat-tile .v {{ color: {TEXT_PRIMARY}; font-size: 30px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }}
+.stat-tile.lead .v {{ color: var(--accent); }}
+.stat-tile .l {{ color: {TEXT_MUTED}; font-size: 13px; line-height: 1.35; margin-top: 0.15rem; }}
+.stat-tile.lead .l {{ color: {TEXT_SECONDARY}; }}
+.insight {{ background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 12px;
+  padding: var(--s-sm) var(--s-md); color: {TEXT_PRIMARY}; font-size: {BODY_FONT_PX}px; line-height: 1.55; }}
+.insight .insight-label {{ display: block; font-size: 12px; font-weight: 800; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 0.15rem; }}
 .chart-legend {{ display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; }}
 .chart-legend .key {{ display: inline-flex; align-items: center; gap: 0.4rem; }}
 .chart-legend .sw {{ width: 12px; height: 12px; border-radius: 3px; display: inline-block; }}
@@ -427,7 +506,7 @@ def page_css() -> str:
   border-radius: 14px; padding: 0.75rem 1rem; }}
 .export-head {{ display: flex; align-items: center; gap: 0.75rem; }}
 .card-ico {{ flex: none; width: 2.5rem; height: 2.5rem; border-radius: 11px; color: {HEADER_TITLE};
-  background: linear-gradient(135deg, {h0} 0%, {h1} 100%); display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%); display: flex; align-items: center; justify-content: center;
   box-shadow: 0 3px 8px rgba(1, 65, 28, 0.25); }}
 .card-ico svg {{ width: 1.3rem; height: 1.3rem; }}
 .export-head .export-title {{ display: block; color: {TEXT_PRIMARY}; font-size: 17px; font-weight: 800; line-height: 1.25; }}
@@ -465,10 +544,12 @@ def page_css() -> str:
 .profile-key .kchg {{ width: 12px; height: 12px; border-radius: 3px; background: #FFFBEB; box-shadow: inset 3px 0 0 {BANNER_ACCENT}; border: 1px solid {CHIP_BORDER}; }}
 
 /* ---- Model card sub-cards ---- */
-[class*="st-key-card_"] {{ background: {SECTION_BACKGROUND}; border: 1px solid {HAIRLINE}; border-top: 4px solid {h0};
-  border-radius: 14px; padding: 1rem 1.1rem 1.1rem 1.1rem; }}
+[class*="st-key-card_"] {{ background: {SECTION_BACKGROUND}; border: 1px solid {HAIRLINE}; border-top: 4px solid var(--accent);
+  border-radius: 16px; padding: var(--s-md) var(--s-lg) var(--s-lg) var(--s-lg); gap: var(--s-md); }}
 .st-key-card_limitations {{ background: {LIMITS_BACKGROUND}; border-top-color: {BANNER_ACCENT}; }}
-.card-head {{ display: flex; align-items: center; gap: 0.8rem; padding-bottom: 0.7rem; border-bottom: 1px solid {HAIRLINE}; }}
+.card-head {{ display: flex; align-items: center; gap: var(--s-md); padding-bottom: var(--s-md); border-bottom: 1px solid {HAIRLINE}; }}
+.card-head .card-eyebrow {{ color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }}
+.card-head.warn .card-eyebrow {{ color: {BANNER_ACCENT}; }}
 .card-head.warn .card-ico {{ background: linear-gradient(135deg, {BANNER_ACCENT} 0%, {BANNER_TEXT} 100%);
   box-shadow: 0 3px 8px rgba(180, 83, 9, 0.25); }}
 .card-head .card-titles {{ flex: 1; min-width: 0; }}
@@ -499,12 +580,12 @@ def page_css() -> str:
   color: {BANNER_TEXT}; font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; }}
 .limits .lim-title {{ color: {TEXT_PRIMARY}; font-weight: 700; font-size: 14px; }}
 .limits .lim-text {{ color: {TEXT_SECONDARY}; font-size: 13px; line-height: 1.5; margin-top: 0.1rem; }}
-.map-legend {{ display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; margin: 0.35rem 0 0 0; }}
+.map-legend {{ display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; margin: 0; }}
 .map-legend .key {{ display: inline-flex; align-items: center; gap: 0.35rem; }}
 .map-legend .dot {{ width: 10px; height: 10px; border-radius: 50%; display: inline-block; }}
 .map-legend .ring {{ width: 12px; height: 12px; border-radius: 50%; border: 3px solid {MAP_SELECTED_RING}; display: inline-block; box-sizing: border-box; }}
 .map-legend .line {{ width: 18px; height: 2px; display: inline-block; }}
-.checklist {{ list-style: none; padding: 0; margin: 0.25rem 0 0.75rem 0; }}
+.checklist {{ list-style: none; padding: 0; margin: 0; }}
 .checklist li {{ display: flex; gap: 0.6rem; padding: 0.55rem 0; border-bottom: 1px solid {HAIRLINE}; }}
 .checklist .mark {{ font-size: 18px; font-weight: 700; line-height: 1.3; width: 1.2rem; }}
 .checklist .pass .mark {{ color: {CHECK_OK_COLOR}; }}
@@ -513,33 +594,81 @@ def page_css() -> str:
 .checklist .check-state {{ color: {TEXT_MUTED}; font-weight: 600; font-size: {SMALL_FONT_PX}px; margin-left: 0.4rem; }}
 .checklist .check-detail {{ color: {TEXT_MUTED}; font-size: 14px; overflow-wrap: anywhere; }}
 
-/* ---- Page sections: numbered grey bands so headings never run into data ---- */
-[class*="st-key-section_"] {{
-  background: {SECTION_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 18px;
-  padding: 1.1rem 1.25rem 1.3rem 1.25rem; margin-top: 1.4rem; gap: 0.9rem;
-}}
-.page-section-head {{
-  display: flex; align-items: flex-start; gap: 0.85rem; padding-bottom: 0.85rem;
-  border-bottom: 1px solid {HAIRLINE}; margin-bottom: 0.1rem;
-}}
-.page-section-head .num {{
-  flex: none; width: 2.1rem; height: 2.1rem; border-radius: 10px; background: {h0}; color: {HEADER_TITLE};
-  font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 0.1rem;
-}}
-.page-section-head .title {{ color: {TEXT_PRIMARY}; font-size: 22px; font-weight: 700; line-height: 1.25; }}
-.page-section-head .sub {{ color: {TEXT_MUTED}; font-size: 14px; line-height: 1.45; margin-top: 0.15rem; }}
+/* ---- Page sections: open (no box) on the tinted page, numbered heading with the section accent ---- */
+[class*="st-key-section_"] {{ margin-top: var(--s-xl); gap: var(--s-lg); }}
+.sec-head {{ position: relative; display: flex; align-items: center; gap: var(--s-md); padding-bottom: var(--s-md);
+  border-bottom: 1px solid {PANEL_BORDER}; }}
+.sec-head::after {{ content: ""; position: absolute; left: 0; bottom: -2px; width: 5.5rem; height: 4px; border-radius: 2px;
+  background: {GOLD}; }}
+.sec-head .sec-num {{ flex: none; width: 3.5rem; height: 3.5rem; border-radius: 16px; color: {HEADER_TITLE};
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%); display: flex; align-items: center;
+  justify-content: center; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 4px var(--accent-soft), 0 8px 18px rgba(15, 23, 42, 0.15); }}
+.sec-head .sec-eyebrow {{ color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }}
+.sec-head .sec-title {{ color: {TEXT_PRIMARY}; font-size: 30px; font-weight: 800; line-height: 1.15; letter-spacing: -0.015em; }}
+.sec-head .sec-sub {{ color: {TEXT_MUTED}; font-size: 15px; line-height: 1.5; margin-top: 0.15rem; }}
 @media (max-width: 640px) {{
-  [class*="st-key-section_"] {{ padding: 0.9rem 0.8rem 1rem 0.8rem; border-radius: 14px; }}
-  .page-section-head .title {{ font-size: 19px; }}
+  .sec-head .sec-num {{ width: 2.75rem; height: 2.75rem; font-size: 18px; border-radius: 13px; }}
+  .sec-head .sec-title {{ font-size: 23px; }}
+  .sec-head .sec-sub {{ font-size: 14px; }}
 }}
-/* Panels inside a section: white cards. */
+/* Panels: the only boxes on the page. White, a top rule in the section accent, one padding, one inner gap. */
 [class*="st-key-panel_"] {{
-  background: {PAGE_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 14px;
-  box-shadow: {PANEL_SHADOW}; padding: 1rem 1.1rem;
+  background: {PAGE_BACKGROUND}; border: 1px solid {PANEL_BORDER}; border-top: 4px solid var(--accent); border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px rgba(15, 23, 42, 0.05);
+  padding: var(--s-lg); gap: var(--s-md);
 }}
-@media (max-width: 640px) {{ [class*="st-key-panel_"] {{ padding: 0.8rem 0.75rem; }} }}
-[class*="st-key-section_"] .app-header {{ margin-bottom: 0; }}
-[class*="st-key-section_"] [data-testid="stTabs"] [data-baseweb="tab-list"] {{ gap: 0.25rem; }}
+@media (max-width: 640px) {{ [class*="st-key-panel_"] {{ padding: var(--s-md); border-radius: 16px; }} }}
+/* Tabs: accent-coloured active tab on a white pill bar. */
+[class*="st-key-section_"] [data-testid="stTabs"] [role="tablist"] {{ gap: var(--s-xs); background: {PAGE_BACKGROUND};
+  border: 1px solid {PANEL_BORDER}; border-radius: 14px; padding: 0.3rem; width: fit-content; max-width: 100%;
+  box-shadow: {PANEL_SHADOW}; }}
+[class*="st-key-section_"] [data-testid="stTab"] {{ border-radius: 10px; padding: 0.45rem 1.1rem; height: auto; }}
+[class*="st-key-section_"] [data-testid="stTab"] p {{ font-size: 15px; font-weight: 700; color: {TEXT_SECONDARY}; }}
+[class*="st-key-section_"] [data-testid="stTab"][aria-selected="true"] {{
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%); }}
+[class*="st-key-section_"] [data-testid="stTab"][aria-selected="true"] p {{ color: {HEADER_TITLE}; }}
+[class*="st-key-section_"] [data-testid="stTabs"] .react-aria-SelectionIndicator {{ display: none; }}
+[class*="st-key-section_"] [data-testid="stTabPanel"] {{ padding-top: var(--s-md); }}
+/* Hazard pickers (segmented controls): selected option in the section accent. */
+[class*="st-key-section_"] button[data-variant="segmented_control"] {{ font-weight: 700; }}
+[class*="st-key-section_"] button[data-variant="segmented_control"][data-selected="true"] {{
+  background: var(--accent); border-color: var(--accent); color: {HEADER_TITLE}; }}
+[class*="st-key-section_"] button[data-variant="segmented_control"][data-selected="true"] p {{ color: {HEADER_TITLE}; }}
+/* Streamlit pulls every markdown block up by -1rem (made for trailing <p> margins). The HTML blocks on this
+   page have no <p>, so that pull would cancel the layout gap and make neighbours touch. */
+[data-testid="stMarkdownContainer"]:not(:has(> p:last-child)) {{ margin-bottom: 0; }}
+@media (max-width: 640px) {{
+  [data-testid="stHeader"] {{ background: {PAGE_TINT}; }}
+  /* Columns stack on phones; the wide desktop column gap would leave large holes between them. */
+  [data-testid="stMainBlockContainer"] [data-testid="stHorizontalBlock"] {{ gap: var(--s-md); }}
+}}
+
+/* ---- District profile: grouped input cards ---- */
+.pgroups {{ display: flex; flex-direction: column; gap: var(--s-lg); }}
+.pgroup-head {{ display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-xs) var(--s-sm); margin-bottom: var(--s-sm); }}
+.pgroup-head .pg-ico {{ flex: none; width: 2rem; height: 2rem; border-radius: 10px; background: var(--accent-soft); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; }}
+.pgroup-head .pg-ico svg {{ width: 1.1rem; height: 1.1rem; }}
+.pgroup-head .pg-title {{ color: {TEXT_PRIMARY}; font-size: 17px; font-weight: 800; }}
+.pgroup-head .pg-meta {{ color: {TEXT_MUTED}; font-size: 13px; }}
+.pgroup-head .badge {{ margin-left: 0; }}
+/* Four columns on a wide panel, so no group leaves a lone card on its own row (checked at 1440px). */
+.pgrid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr)); gap: var(--s-sm); }}
+.pcard {{ background: {PAGE_BACKGROUND}; border: 1px solid {PANEL_BORDER}; border-radius: 14px; padding: var(--s-sm) var(--s-md);
+  display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }}
+.pcard.changed {{ background: {LIMITS_BACKGROUND}; box-shadow: inset 4px 0 0 {BANNER_ACCENT}; }}
+.pcard.standout {{ border-color: {GOLD}; }}
+.pcard .pc-top {{ display: flex; justify-content: space-between; align-items: center; gap: var(--s-xs); min-height: 1.35rem; }}
+.pcard .pc-label {{ color: {TEXT_SECONDARY}; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }}
+.pcard .pc-flag {{ flex: none; background: {GOLD_SOFT}; color: {GOLD_TEXT}; border-radius: 999px; padding: 0.05rem 0.5rem;
+  font-size: 11px; font-weight: 800; white-space: nowrap; }}
+.pcard .pc-value {{ color: {TEXT_PRIMARY}; font-size: 24px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }}
+.pcard .pc-value .badge {{ vertical-align: middle; font-size: 11px; }}
+.pcard .pc-was {{ color: {TEXT_MUTED}; font-size: 12px; }}
+.pcard .rbar {{ min-width: 0; }}
+.pcard .pc-foot {{ display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--s-xs); }}
+.pcard .pc-rank {{ color: var(--accent); font-size: 12px; font-weight: 800; }}
 /* Phones: Streamlit collapses the sidebar, so say where the controls are. Hidden on wider screens. */
 .phone-hint {{ display: none; background: {CHIP_BACKGROUND}; border: 1px solid {CHIP_BORDER}; color: {TEXT_PRIMARY};
   border-radius: 10px; padding: 0.5rem 0.75rem; font-size: 14px; line-height: 1.45; }}
@@ -651,21 +780,87 @@ def chips_html(label: str, chips: Sequence[str]) -> str:
     return f'<div class="chip-row"><span class="chip-label">{html.escape(label)}</span>{items}</div>'
 
 
-def section_head_html(title: str, subtitle: str = "", panel: bool = False) -> str:
-    """Section title with an optional one-line subtitle; ``panel`` uses the compact size inside cards."""
-    sub = f'<div class="section-sub">{html.escape(subtitle)}</div>' if subtitle else ""
-    css = "section-head panel" if panel else "section-head"
-    return f'<div class="{css}"><div class="section-title">{html.escape(title)}</div>{sub}</div>'
+def page_section_head_html(number: int, eyebrow: str, title: str, subtitle: str = "") -> str:
+    """Numbered top-level section heading: accent number tile, eyebrow, large title, subtitle, gold rule.
 
-
-def page_section_head_html(number: int, title: str, subtitle: str = "") -> str:
-    """Numbered top-level section heading (used as the first element of a ``section_*`` container)."""
-    sub = f'<div class="sub">{html.escape(subtitle)}</div>' if subtitle else ""
+    Used as the first element of a ``section_*`` container, whose key sets the accent colour.
+    """
+    sub = f'<div class="sec-sub">{html.escape(subtitle)}</div>' if subtitle else ""
     return (
-        '<div class="page-section-head">'
-        f'<div class="num" aria-hidden="true">{number:02d}</div>'
-        f'<div><div class="title" role="heading" aria-level="2">{html.escape(title)}</div>{sub}</div>'
+        '<div class="sec-head">'
+        f'<div class="sec-num" aria-hidden="true">{number:02d}</div>'
+        f'<div><div class="sec-eyebrow">{html.escape(eyebrow)}</div>'
+        f'<div class="sec-title" role="heading" aria-level="2">{html.escape(title)}</div>{sub}</div>'
         "</div>"
+    )
+
+
+def panel_head_html(icon: str, eyebrow: str, title: str, subtitle: str = "") -> str:
+    """Heading at the top of a panel: accent icon tile, coloured eyebrow, bold title, one-line subtitle."""
+    sub = f'<div class="ph-sub">{html.escape(subtitle)}</div>' if subtitle else ""
+    return (
+        f'<div class="panel-head"><span class="ph-ico">{icon_svg(icon)}</span><div class="ph-text">'
+        f'<div class="ph-eyebrow">{html.escape(eyebrow)}</div>'
+        f'<div class="ph-title" role="heading" aria-level="3">{html.escape(title)}</div>{sub}</div></div>'
+    )
+
+
+def rank_label(share_below: float, share_above: float) -> str:
+    """Short national rank for scanning, e.g. 'Highest 4%' or 'Lowest 10%'."""
+    if share_below >= share_above:
+        return f"Highest {max(1, round((1 - share_below) * 100))}% in Pakistan"
+    return f"Lowest {max(1, round((1 - share_above) * 100))}% in Pakistan"
+
+
+#: A value "stands out" when fewer than this share of districts are more extreme on that side.
+STANDOUT_SHARE: Final[float] = 0.9
+
+
+def profile_card_html(
+    label: str,
+    value: str,
+    dataset_value: str | None,
+    province_median: str,
+    vs_province_pct: float,
+    position: float,
+    province_position: float,
+    low: str,
+    high: str,
+    share_below: float,
+    share_above: float,
+) -> str:
+    """One input as a compact card: label, value, national range bar, rank, and difference from the province."""
+    standout = max(share_below, share_above) >= STANDOUT_SHARE
+    classes = "pcard" + (" changed" if dataset_value is not None else "") + (" standout" if standout else "")
+    flag = '<span class="pc-flag">★ Stands out</span>' if standout else ""
+    changed = badge_html("Changed", "changed") if dataset_value is not None else ""
+    was = f'<div class="pc-was">Dataset value: {html.escape(dataset_value)}</div>' if dataset_value is not None else ""
+    bar = range_bar_html(
+        position,
+        province_position,
+        low,
+        high,
+        f"{value}, between {low} and {high}; province median {province_median}; "
+        f"{rank_sentence(share_below, share_above)}",
+    )
+    return (
+        f'<div class="{classes}"><div class="pc-top"><span class="pc-label">{html.escape(label)}</span>{flag}</div>'
+        f'<div class="pc-value">{html.escape(value)} {changed}</div>{was}{bar}'
+        f'<div class="pc-foot"><span class="pc-rank">{html.escape(rank_label(share_below, share_above))}</span>'
+        f"{delta_chip_html(vs_province_pct, suffix=' province')}</div></div>"
+    )
+
+
+def profile_group_html(icon: str, title: str, meta: str, source: str, cards: Sequence[str]) -> str:
+    """A titled group of profile cards (e.g. Climate), with its source badge."""
+    kind = "real" if source == "Real" else "synthetic"
+    label = "Real data" if source == "Real" else "Synthetic"
+    return (
+        f'<section class="pgroup" aria-label="{html.escape(title)}"><div class="pgroup-head">'
+        f'<span class="pg-ico">{icon_svg(icon)}</span><span class="pg-title">{html.escape(title)}</span>'
+        f"{badge_html(label, kind)}"
+        f'<span class="pg-meta">{html.escape(meta)}</span></div>'
+        f'<div class="pgrid">{"".join(cards)}</div></section>'
     )
 
 
@@ -699,6 +894,10 @@ ICONS: Final[dict[str, str]] = {
     "chart": '<path d="M3 20h18"/><path d="M6 16v-5M11 16V6M16 16v-3M20 16V9"/>',
     "alert": '<path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17.2v.3"/>',
     "profile": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/>',
+    "map": '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>',
+    "mountain": '<path d="m3 20 6.5-11 4 6.5L16 12l5 8H3z"/>',
+    "database": '<ellipse cx="12" cy="5.5" rx="8" ry="2.5"/><path d="M4 5.5v13c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-13"/><path d="M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5"/>',
+    "flame": '<path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-4 2.5-5 .3 2 1.3 3 2.5 3-1-3 0-5.5 0-8z"/>',
 }
 
 
@@ -731,14 +930,20 @@ def export_head_html() -> str:
 
 
 def card_head_html(
-    icon: str, title: str, subtitle: str = "", badge: tuple[str, str] | None = None, tone: str = ""
+    icon: str,
+    title: str,
+    subtitle: str = "",
+    badge: tuple[str, str] | None = None,
+    tone: str = "",
+    eyebrow: str = "",
 ) -> str:
-    """Heading for a model-card sub-card: icon tile, title, subtitle, and an optional ``(text, kind)`` badge."""
+    """Heading for a model-card sub-card: icon tile, eyebrow, title, subtitle, and an optional ``(text, kind)`` badge."""
     sub = f'<div class="card-sub">{html.escape(subtitle)}</div>' if subtitle else ""
+    top = f'<div class="card-eyebrow">{html.escape(eyebrow)}</div>' if eyebrow else ""
     chip = f'<span class="card-badge {html.escape(badge[1])}">{html.escape(badge[0])}</span>' if badge else ""
     return (
         f'<div class="card-head {html.escape(tone)}"><span class="card-ico">{icon_svg(icon)}</span>'
-        f'<div class="card-titles"><div class="card-title" role="heading" aria-level="3">{html.escape(title)}</div>'
+        f'<div class="card-titles">{top}<div class="card-title" role="heading" aria-level="4">{html.escape(title)}</div>'
         f"{sub}</div>{chip}</div>"
     )
 
@@ -774,22 +979,33 @@ def profile_value_html(value: str, dataset_value: str | None) -> SafeHtml:
     )
 
 
-def delta_chip_html(pct: float) -> SafeHtml:
-    """Relative difference from the province median as a neutral chip (direction is not good or bad)."""
+def delta_chip_html(pct: float, suffix: str = "") -> SafeHtml:
+    """Relative difference from the province median as a neutral chip (direction is not good or bad).
+
+    ``suffix`` is appended to the comparison word, e.g. " province" gives "5% above province".
+    """
     if math.isnan(pct):
         return SafeHtml('<span class="delta">—</span>')
+    tail = html.escape(suffix)
     if abs(pct) < 1:
-        return SafeHtml('<span class="delta">≈ same</span>')
+        return SafeHtml(
+            f'<span class="delta">≈ same as{tail}</span>' if suffix else '<span class="delta">≈ same</span>'
+        )
     arrow, word = ("▲", "above") if pct > 0 else ("▼", "below")
     size = f"{abs(pct):.0f}%" if abs(pct) < 1000 else f"{abs(pct) / 100:.0f}×"
-    return SafeHtml(f'<span class="delta"><span aria-hidden="true">{arrow}</span> {size} {word}</span>')
+    return SafeHtml(f'<span class="delta"><span aria-hidden="true">{arrow}</span> {size} {word}{tail}</span>')
+
+
+def rank_sentence(share_below: float, share_above: float) -> str:
+    """Plain-language rank in Pakistan, e.g. 'higher than 82% of districts'."""
+    if share_below >= share_above:
+        return f"higher than {share_below:.0%} of districts"
+    return f"lower than {share_above:.0%} of districts"
 
 
 def rank_note_html(share_below: float, share_above: float) -> SafeHtml:
-    """Plain-language rank in Pakistan, e.g. 'higher than 82% of districts'."""
-    if share_below >= share_above:
-        return SafeHtml(f'<span class="rank">higher than {share_below:.0%} of districts</span>')
-    return SafeHtml(f'<span class="rank">lower than {share_above:.0%} of districts</span>')
+    """``rank_sentence`` as a muted inline note."""
+    return SafeHtml(f'<span class="rank">{html.escape(rank_sentence(share_below, share_above))}</span>')
 
 
 @dataclass(frozen=True, slots=True)

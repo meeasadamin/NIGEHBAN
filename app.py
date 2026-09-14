@@ -403,12 +403,15 @@ def render_explanation(assessment: engine.Assessment, target: str) -> None:
     explanation = assessment.explanations[target]
     hazard = engine.TARGET_LABELS[target]
     st.markdown(
-        theme.section_head_html(
-            f"Why the {hazard.lower()} score looks like this", "SHAP explanation of the High score", panel=True
+        theme.panel_head_html(
+            "chart",
+            "Score drivers",
+            f"What drives the {hazard.lower()} score",
+            "Each bar is one input. Red bars push the chance of High up, blue bars pull it down.",
         ),
         unsafe_allow_html=True,
     )
-    st.markdown(theme.insight_html("Why", assessment.insights[target]), unsafe_allow_html=True)
+    st.markdown(theme.insight_html("In one sentence", assessment.insights[target]), unsafe_allow_html=True)
     st.markdown(
         theme.chart_legend_html(
             [
@@ -423,7 +426,10 @@ def render_explanation(assessment: engine.Assessment, target: str) -> None:
     st.plotly_chart(
         waterfall_figure(explanation), width="stretch", config={"displayModeBar": False, "responsive": True}
     )
-    st.markdown(theme.sub_head_html("Calibrated probabilities", "after temperature scaling"), unsafe_allow_html=True)
+    st.markdown(
+        theme.sub_head_html("Chance of each rating", "calibrated probabilities, adding up to 100%"),
+        unsafe_allow_html=True,
+    )
     # Each bar wears its own row's level colour (the word and shape are printed beside it).
     st.markdown(
         theme.data_table_html(
@@ -465,10 +471,11 @@ def render_map_panel(
     rows = national[national["target"] == target]
     high_count = int((rows["label"] == "High").sum())
     st.markdown(
-        theme.section_head_html(
-            f"Where High {hazard.lower()} risk is modelled",
-            f"{high_count} of {len(rows)} districts predicted High with unmodified inputs",
-            panel=True,
+        theme.panel_head_html(
+            "map",
+            "National map",
+            f"Where {hazard.lower()} risk is High",
+            f"{high_count} of {len(rows)} districts are High today. {assessment.district} is ringed.",
         ),
         unsafe_allow_html=True,
     )
@@ -495,76 +502,96 @@ def render_map_panel(
 
 
 def render_profile_panel(assessment: engine.Assessment, df: pd.DataFrame) -> None:
-    """Full-width district profile: highlights, grouped comparison table with range bars, and a key."""
-    st.markdown(
-        theme.section_head_html(
-            "District profile",
-            f"How {assessment.district} compares with {assessment.province} and all {len(df)} districts in Pakistan.",
-            panel=True,
-        ),
-        unsafe_allow_html=True,
-    )
+    """District profile as grouped input cards (Climate, Land and exposure, Geography) plus a table view."""
     profile = engine.district_profile(df, assessment)
-
-    # Highlights: the three inputs where this district sits furthest from the middle of Pakistan.
-    extremeness = profile[["share_below", "share_above"]].max(axis=1)
-    tiles = []
-    for _, row in profile.loc[extremeness.sort_values(ascending=False).index[:3]].iterrows():
-        rank = (
-            f"higher than {row['share_below']:.0%}"
-            if row["share_below"] >= row["share_above"]
-            else f"lower than {row['share_above']:.0%}"
-        )
-        tiles.append((str(row["This scenario"]), f"{row['Input']} · {rank} of districts"))
-    st.markdown(theme.sub_head_html("What stands out", "furthest from the national middle"), unsafe_allow_html=True)
-    st.markdown(theme.stat_tiles_html(tiles), unsafe_allow_html=True)
-
-    def cells(row: pd.Series) -> theme.TableRow:
-        scenario = theme.profile_value_html(
-            str(row["This scenario"]), str(row["Dataset value"]) if row["Changed"] else None
-        )
-        low, high = str(row["pakistan_min_label"]), str(row["pakistan_max_label"])
-        bar = theme.range_bar_html(
-            row["range_position"],
-            row["province_position"],
-            low,
-            high,
-            f"{row['This scenario']}, between {low} and {high}; province median {row['Province median']}",
-        )
-        where = theme.SafeHtml(bar + theme.rank_note_html(row["share_below"], row["share_above"]))
-        return theme.TableRow(
-            [row["Input"], scenario, row["Province median"], theme.delta_chip_html(row["vs_province_pct"]), where],
-            "changed" if row["Changed"] else "",
-        )
-
-    synthetic, real = profile[profile["Source"] == "Synthetic"], profile[profile["Source"] == "Real"]
-    rows: list = [
-        theme.TableGroup("Simulated inputs · change them in the sidebar", theme.badge_html("Synthetic", "synthetic"))
-    ]
-    rows += [cells(row) for _, row in synthetic.iterrows()]
-    rows.append(theme.TableGroup("Geography · fixed for each district", theme.badge_html("Real data", "real")))
-    rows += [cells(row) for _, row in real.iterrows()]
+    standouts = int((profile[["share_below", "share_above"]].max(axis=1) >= theme.STANDOUT_SHARE).sum())
     st.markdown(
-        theme.data_table_html(
-            [
-                theme.Column("Input", "strong nowrap"),
-                theme.Column("This scenario", "nowrap"),
-                theme.Column("Province median", "nowrap"),
-                theme.Column("vs province"),
-                theme.Column("Where it sits in Pakistan"),
-            ],
-            rows,
-            caption=f"{assessment.district} district profile",
+        theme.panel_head_html(
+            "profile",
+            "District data",
+            f"{assessment.district} at a glance",
+            f"{len(profile)} inputs in three groups, each placed on Pakistan's range from the lowest to the highest "
+            f"district. {standouts} stand out from the national middle.",
         ),
         unsafe_allow_html=True,
     )
+
+    def card(row: pd.Series) -> str:
+        return theme.profile_card_html(
+            label=str(row["Input"]),
+            value=str(row["This scenario"]),
+            dataset_value=str(row["Dataset value"]) if row["Changed"] else None,
+            province_median=str(row["Province median"]),
+            vs_province_pct=float(row["vs_province_pct"]),
+            position=float(row["range_position"]),
+            province_position=float(row["province_position"]),
+            low=str(row["pakistan_min_label"]),
+            high=str(row["pakistan_max_label"]),
+            share_below=float(row["share_below"]),
+            share_above=float(row["share_above"]),
+        )
+
+    # The same groups as the sidebar, then the fixed real geography.
+    by_feature = profile.set_index("feature", drop=False)
+    html_groups = []
+    for name, features in SLIDER_GROUPS.items():
+        hint, icon = SLIDER_GROUP_HEADS[name]
+        html_groups.append(
+            theme.profile_group_html(
+                icon,
+                name,
+                f"{len(features)} inputs · {hint} · adjustable in the sidebar",
+                "Synthetic",
+                [card(by_feature.loc[f]) for f in features],
+            )
+        )
+    real = profile[profile["Source"] == "Real"]
+    html_groups.append(
+        theme.profile_group_html(
+            "mountain",
+            "Geography",
+            f"{len(real)} inputs · elevation and distances · fixed for each district",
+            "Real",
+            [card(row) for _, row in real.iterrows()],
+        )
+    )
+    st.markdown(f'<div class="pgroups">{"".join(html_groups)}</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="profile-key"><span class="k"><span class="kdot"></span>This scenario</span>'
         '<span class="k"><span class="kmed"></span>Province median</span>'
         '<span class="k"><span class="kchg"></span>Changed in the sidebar</span>'
+        '<span class="k">★ Stands out: more extreme than 90% of districts</span>'
         '<span class="k">Bars run from the lowest to the highest district in Pakistan</span></div>',
         unsafe_allow_html=True,
     )  # static markup only
+    with st.expander("Table view of all inputs"):
+        st.markdown(
+            theme.data_table_html(
+                [
+                    theme.Column("Input", "strong nowrap"),
+                    theme.Column("This scenario", "nowrap"),
+                    theme.Column("Dataset value", "nowrap"),
+                    theme.Column("Province median", "nowrap"),
+                    theme.Column("Pakistan range", "nowrap"),
+                    theme.Column("Rank"),
+                    theme.Column("Source"),
+                ],
+                [
+                    [
+                        row["Input"],
+                        row["This scenario"],
+                        row["Dataset value"],
+                        row["Province median"],
+                        row["Pakistan range"],
+                        theme.rank_sentence(row["share_below"], row["share_above"]),
+                        row["Source"],
+                    ]
+                    for _, row in profile.iterrows()
+                ],
+                caption=f"{assessment.district} district profile",
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 @st.cache_data(max_entries=16, show_spinner="Re-scoring every district under the scenario…")
@@ -602,6 +629,15 @@ def render_stress_test(
 ) -> None:
     """Feature 4: apply a stated climate shift to every district and show which ones become High."""
     st.markdown(
+        theme.panel_head_html(
+            "flame",
+            "Climate stress test",
+            "Which districts would turn High in a hotter, wetter climate?",
+            "Shift summer temperature and rainfall for every district at once and re-score all 150.",
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
         theme.planning_label_html(
             "what-if analysis, not a projection or forecast",
             "Every district's summer temperature and rainfall are shifted by the amounts below and re-scored with the "
@@ -610,7 +646,7 @@ def render_stress_test(
         ),
         unsafe_allow_html=True,
     )
-    left, right = st.columns(2)
+    left, right = st.columns(2, gap="large")
     temp_shift = left.slider(
         "Summer temperature shift (°C)", *engine.STRESS_TEMP_SHIFT_RANGE, value=2.0, step=0.5, key="stress_temp"
     )
@@ -631,7 +667,7 @@ def render_stress_test(
 
     st.markdown(
         theme.sub_head_html(
-            "Districts that would become High", f"+{temp_shift:g} °C, rainfall ×{rain_factor:g} · largest rise first"
+            "Newly High districts, biggest jump first", f"at +{temp_shift:g} °C and rainfall ×{rain_factor:g}"
         ),
         unsafe_allow_html=True,
     )
@@ -674,6 +710,10 @@ def render_stress_test(
         unsafe_allow_html=True,
     )
 
+    st.markdown(
+        theme.sub_head_html("Today versus the scenario", "pick a hazard to compare the two maps"),
+        unsafe_allow_html=True,
+    )
     hazard = st.segmented_control(
         "Compare hazard",
         options=[t for t in bundle.targets if t != "seismic_risk"],
@@ -681,9 +721,11 @@ def render_stress_test(
         default="heatwave_risk",
         required=True,
         key="stress_hazard",
+        label_visibility="collapsed",
     )
     now_col, stress_col = st.columns(2, gap="large")
-    for column, stressed, title in ((now_col, False, "Current conditions"), (stress_col, True, "Under the scenario")):
+    scenario_title = f"With +{temp_shift:g} °C and rain ×{rain_factor:g}"
+    for column, stressed, title in ((now_col, False, "Today"), (stress_col, True, scenario_title)):
         with column:
             rows = _map_rows(results, hazard, stressed)
             emphasized = rows[f"{'stressed' if stressed else 'current'}_label"] == "High"
@@ -714,6 +756,15 @@ def render_hotspots(
     layers: engine.MapLayers,
 ) -> None:
     """Feature 5: districts predicted High for two or more hazards at once."""
+    st.markdown(
+        theme.panel_head_html(
+            "layers",
+            "Multi-hazard hotspots",
+            "Where do hazards pile up?",
+            "Districts rated High for two or more hazards at once need joined-up preparedness.",
+        ),
+        unsafe_allow_html=True,
+    )
     conditions = st.radio(
         "Conditions",
         ["Current conditions", "Climate stress-test scenario"],
@@ -748,11 +799,7 @@ def render_hotspots(
         ),
         unsafe_allow_html=True,
     )
-    st.markdown(
-        theme.note_html("Compound risk: a district facing several hazards at once needs coordinated preparedness."),
-        unsafe_allow_html=True,
-    )
-    table_col, map_col = st.columns([7, 5], gap="medium")
+    table_col, map_col = st.columns([7, 5], gap="large")
     with table_col:
         if hotspots.empty:
             st.markdown(theme.note_html("No district is High for two or more hazards."), unsafe_allow_html=True)
@@ -812,13 +859,23 @@ def render_model_card(bundle: engine.ModelBundle, issues: tuple[engine.Provenanc
     meta = bundle.metadata
     checklist = engine.provenance_checklist(bundle, issues)
     passed = sum(item.passed for item in checklist)
+    st.markdown(
+        theme.panel_head_html(
+            "profile",
+            "Model card",
+            "Three questions to ask before trusting a score",
+            "Is the right model running? How accurate is it? What can it not tell you?",
+        ),
+        unsafe_allow_html=True,
+    )
     with st.container(key="card_provenance"):
         st.markdown(
             theme.card_head_html(
                 "shield",
-                "Provenance checks",
-                "Run at every start-up against the files being served",
+                "Is the right model running on the right data?",
+                "Four provenance checks run at every start-up against the files being served.",
                 badge=(f"{passed} of {len(checklist)} passed", "real" if passed == len(checklist) else "changed"),
+                eyebrow="1 · Provenance checks",
             ),
             unsafe_allow_html=True,
         )
@@ -834,10 +891,11 @@ def render_model_card(bundle: engine.ModelBundle, issues: tuple[engine.Provenanc
         st.markdown(
             theme.card_head_html(
                 "alert",
-                "Limitations",
-                "Read these before relying on any number on this page",
+                "What can it not tell you?",
+                "Read these five limits before relying on any number on this page.",
                 badge=("Simulated data", "changed"),
                 tone="warn",
+                eyebrow="3 · Limitations",
             ),
             unsafe_allow_html=True,
         )
@@ -850,11 +908,12 @@ def render_performance(bundle: engine.ModelBundle, meta: dict) -> None:
     st.markdown(
         theme.card_head_html(
             "chart",
-            "Performance",
+            "How accurate is it on districts it never saw?",
             f"Nested cross-validation: {search['outer_folds']} outer × {search['inner_folds']} inner folds, "
             f"{search['n_trials']} Optuna trials, class-weighted {', '.join(search['families'])}. "
             "Mean ± standard deviation over outer folds.",
             badge=("Held-out estimates", "synthetic"),
+            eyebrow="2 · Performance",
         ),
         unsafe_allow_html=True,
     )
@@ -950,7 +1009,10 @@ def render_dashboard() -> None:
     with st.container(key="section_overview"):
         st.markdown(
             theme.page_section_head_html(
-                1, "Risk overview", "Predicted risk level for each hazard under the inputs set in the sidebar."
+                1,
+                "Risk overview",
+                f"How exposed is {district}?",
+                "The chance of a High rating for flood, heatwave and seismic risk, using the inputs in the sidebar.",
             ),
             unsafe_allow_html=True,
         )
@@ -1016,7 +1078,8 @@ def render_dashboard() -> None:
             theme.page_section_head_html(
                 2,
                 "Assessment detail",
-                "Choose a hazard: the explanation and the national map below both follow it.",
+                "Why did it get this rating?",
+                "Pick a hazard below. The score drivers and the national map both follow your choice.",
             ),
             unsafe_allow_html=True,
         )
@@ -1029,7 +1092,7 @@ def render_dashboard() -> None:
             key="hazard",
             label_visibility="collapsed",
         )
-        left, right = st.columns([7, 5], gap="medium")
+        left, right = st.columns([7, 5], gap="large")
         with left, st.container(key="panel_explanation"):
             render_explanation(assessment, target)
         with right, st.container(key="panel_map"):
@@ -1043,7 +1106,8 @@ def render_dashboard() -> None:
             theme.page_section_head_html(
                 3,
                 "Planning ahead",
-                "National what-if tools: which districts would become High, and where hazards compound.",
+                "What if the climate shifts?",
+                "Two national what-if tools: districts that would turn High, and places where hazards overlap.",
             ),
             unsafe_allow_html=True,
         )
@@ -1057,7 +1121,10 @@ def render_dashboard() -> None:
     with st.container(key="section_model"):
         st.markdown(
             theme.page_section_head_html(
-                4, "Model and data", "How the models were trained, checked and validated, and what they cannot do."
+                4,
+                "Model and data",
+                "Can you trust these scores?",
+                "How the models were built and checked, how accurate they are, and where their limits lie.",
             ),
             unsafe_allow_html=True,
         )
@@ -1065,7 +1132,15 @@ def render_dashboard() -> None:
         with model_tab, st.container(key="panel_model_card"):
             render_model_card(bundle, issues)
         with data_tab, st.container(key="panel_dataset"):
-            st.markdown("Synthetic labels stored in the dataset (training targets), not model predictions.")
+            st.markdown(
+                theme.panel_head_html(
+                    "database",
+                    "Dataset labels",
+                    "The training labels for all 150 districts",
+                    "Synthetic labels stored in the dataset (training targets), not model predictions. Sort any column.",
+                ),
+                unsafe_allow_html=True,
+            )
             st.dataframe(engine.dataset_labels_table(df), hide_index=True, width="stretch", height=360)
 
 
