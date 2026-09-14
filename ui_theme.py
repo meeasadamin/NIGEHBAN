@@ -340,6 +340,8 @@ def page_css() -> str:
 [data-testid="stMainBlockContainer"] {{ padding-top: var(--s-md); padding-bottom: var(--s-xl); max-width: 1320px; }}
 [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"] {{ gap: var(--s-md); }}
 @media (max-width: 640px) {{ [data-testid="stMainBlockContainer"] {{ padding-top: 3.75rem; }} }}
+/* Streamlit Community Cloud adds Fork / GitHub buttons to the top bar; clear them there only (seen on the live app). */
+[data-testid="stApp"]:has([data-testid="stToolbarActionButton"]) [data-testid="stMainBlockContainer"] {{ padding-top: 3.75rem; }}
 /* The element holding this <style> tag renders nothing but would still take a flex gap. */
 [data-testid="stElementContainer"]:has(style) {{ display: none; }}
 @font-face {{

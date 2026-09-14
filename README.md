@@ -2,8 +2,9 @@
 
 **Explainable flood, heatwave, and seismic risk scoring for 150 Pakistani districts: a portfolio demonstrator built on real geography and synthetic climate data.** *Nigehban* means "guardian" or "watchman" in Urdu.
 
-**Live demo:** not deployed yet. The repository is ready for Streamlit Community Cloud; see [Deploying](#deploying-streamlit-community-cloud). This line will carry the link once the deployment resolves.
+**Live demo:** **[nigehban.streamlit.app](https://nigehban.streamlit.app/)** (Streamlit Community Cloud; if the app has been idle it may take a minute to wake up).
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://nigehban.streamlit.app/)
 [![CI](https://github.com/meeasadamin/NIGEHBAN/actions/workflows/ci.yml/badge.svg)](https://github.com/meeasadamin/NIGEHBAN/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.63-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io/)
@@ -308,11 +309,10 @@ Dependencies are pinned in a uv-compiled lock (`requirements.txt`, `requirements
 
 ### Deploying (Streamlit Community Cloud)
 
-The code is on GitHub at [meeasadamin/NIGEHBAN](https://github.com/meeasadamin/NIGEHBAN); the remaining steps to a public link:
+The live app at **[nigehban.streamlit.app](https://nigehban.streamlit.app/)** is deployed from this repository's `main` branch and redeploys automatically on every push. To run your own copy:
 
-1. **Confirm CI passes** on the repository's [Actions tab](https://github.com/meeasadamin/NIGEHBAN/actions) (the badge at the top of this README shows the latest run).
-2. **Deploy** at [share.streamlit.io](https://share.streamlit.io): *Create app* → this repository, branch `main`, main file `app.py` → *Advanced settings* → Python **3.12** → Deploy. Streamlit Community Cloud installs `requirements.txt` from the repository root.
-3. **Put the resulting URL** on the *Live demo* line at the top of this README, after opening it once to confirm it loads.
+1. **Fork** [meeasadamin/NIGEHBAN](https://github.com/meeasadamin/NIGEHBAN) and confirm CI passes on your fork's Actions tab.
+2. **Deploy** at [share.streamlit.io](https://share.streamlit.io): *Create app* → your fork, branch `main`, main file `app.py` → *Advanced settings* → Python **3.12** → Deploy. Streamlit Community Cloud installs `requirements.txt` from the repository root.
 
 What the app needs to boot, all committed (none excluded by `.gitignore`): `models/best_hazard_pipeline.pkl` and its `.sha256` manifest, `data/pakistan_districts.csv`, `data/reference/*.geojson`, `static/fonts/NotoNastaliqUrdu-Variable.ttf` (with `.streamlit/config.toml` enabling static serving), and `requirements.txt`. Optionally set the secret `NDMA_MODEL_SHA256` to the digest in the manifest, so integrity checking does not rely on a file stored next to the model.
 
