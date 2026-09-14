@@ -7,7 +7,9 @@ abstract: >-
   climate stress test, and verified accessibility.
 type: software
 authors:
-  - alias: meeasadamin
+  - given-names: Asad
+    family-names: Amin
+    alias: meeasadamin
 version: 2.0.0
 date-released: "2026-09-14"
 license: MIT

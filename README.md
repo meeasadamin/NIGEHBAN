@@ -338,7 +338,7 @@ What the app needs to boot, all committed (none excluded by `.gitignore`): `mode
 
 ## Author
 
-Built as part of an application for **Assistant Manager (AI/ML) — PPS-7, National Disaster Management Authority, Pakistan**.
+**Asad Amin** - AI/ML Engineer
 
 ## Contributing, security, and citation
 
