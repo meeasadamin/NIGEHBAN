@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Nigehban: Pakistan Multi-Hazard Risk Analyzer"
+abstract: >-
+  Explainable flood, heatwave, and seismic risk scoring for 150 Pakistani districts, built on real geography
+  and synthetic climate data, with nested cross-validation, calibrated probabilities, SHAP explanations, a
+  climate stress test, and verified accessibility.
+type: software
+authors:
+  - alias: meeasadamin
+version: 2.0.0
+date-released: "2026-09-14"
+license: MIT
+repository-code: "https://github.com/meeasadamin/NIGEHBAN"
+keywords:
+  - disaster risk
+  - multi-hazard
+  - explainable AI
+  - SHAP
+  - Streamlit
+  - Pakistan

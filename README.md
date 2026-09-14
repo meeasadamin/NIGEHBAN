@@ -4,8 +4,7 @@
 
 **Live demo:** not deployed yet. The repository is ready for Streamlit Community Cloud; see [Deploying](#deploying-streamlit-community-cloud). This line will carry the link once the deployment resolves.
 
-<!-- CI badge: add after the repository is pushed to GitHub, replacing OWNER/REPO:
-[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml) -->
+[![CI](https://github.com/meeasadamin/NIGEHBAN/actions/workflows/ci.yml/badge.svg)](https://github.com/meeasadamin/NIGEHBAN/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.63-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
@@ -233,6 +232,7 @@ generate_data.py            Dataset generator (seed 42; --check verifies the com
 train.py                    Nested-CV training, calibration, bundle + manifest + metrics
 scripts/
   build_favicon.py          Renders the Nigehban browser-tab icon from the header emblem
+  build_logo.py             Renders the sidebar logo (emblem + wordmark)
   build_reference_data.py   Downloads and subsets the real reference layers
   evaluate_v1_protocol.py   Re-scores v1 data with the nested protocol
   check_layout.py           Real-browser responsive/contrast measurements
@@ -248,8 +248,16 @@ tests/                      Unit, integration, accessibility, AppTest smoke, tra
 docs/screenshots/           Edge renders used in this README
 archive/v1/                 Unmodified v1 artifacts referenced by AUDIT.md
 analysis.ipynb              Archived v1 notebook (not part of the v2 pipeline)
+static/                     Urdu font (OFL), favicon, sidebar logo
 AUDIT.md                    v1 audit (verbatim) + traceability index
-.github/workflows/ci.yml    Lint, reproducibility, tests, training smoke run
+CHANGELOG.md                Release notes
+CONTRIBUTING.md             Setup, checks, and conventions for changes
+SECURITY.md                 Private vulnerability reporting and model-loading notes
+CITATION.cff                How to cite this project
+.github/
+  workflows/ci.yml          Lint, reproducibility, tests, training smoke run (SHA-pinned actions)
+  dependabot.yml            Monthly updates for the pinned GitHub Actions
+  ISSUE_TEMPLATE/           Bug report and feature/data request forms
 ```
 
 ---
@@ -259,6 +267,8 @@ AUDIT.md                    v1 audit (verbatim) + traceability index
 Requires Python 3.12.
 
 ```bash
+git clone https://github.com/meeasadamin/NIGEHBAN.git
+cd NIGEHBAN
 python -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt  # or requirements.txt to run the app only
@@ -298,16 +308,11 @@ Dependencies are pinned in a uv-compiled lock (`requirements.txt`, `requirements
 
 ### Deploying (Streamlit Community Cloud)
 
-The smallest real path from this folder to a public link:
+The code is on GitHub at [meeasadamin/NIGEHBAN](https://github.com/meeasadamin/NIGEHBAN); the remaining steps to a public link:
 
-1. **Push to GitHub** (needs your account; this folder is already a git repository with an initial commit):
-   ```bash
-   git remote add origin https://github.com/OWNER/nigehban.git   # create the empty public repo on github.com first
-   git push -u origin main
-   ```
-2. **Confirm CI passes** on the repository's Actions tab, then add the CI badge from the comment at the top of this README.
-3. **Deploy** at [share.streamlit.io](https://share.streamlit.io): *Create app* → this repository, branch `main`, main file `app.py` → *Advanced settings* → Python **3.12** → Deploy. Streamlit Community Cloud installs `requirements.txt` from the repository root.
-4. **Put the resulting URL** on the *Live demo* line at the top of this README, after opening it once to confirm it loads.
+1. **Confirm CI passes** on the repository's [Actions tab](https://github.com/meeasadamin/NIGEHBAN/actions) (the badge at the top of this README shows the latest run).
+2. **Deploy** at [share.streamlit.io](https://share.streamlit.io): *Create app* → this repository, branch `main`, main file `app.py` → *Advanced settings* → Python **3.12** → Deploy. Streamlit Community Cloud installs `requirements.txt` from the repository root.
+3. **Put the resulting URL** on the *Live demo* line at the top of this README, after opening it once to confirm it loads.
 
 What the app needs to boot, all committed (none excluded by `.gitignore`): `models/best_hazard_pipeline.pkl` and its `.sha256` manifest, `data/pakistan_districts.csv`, `data/reference/*.geojson`, `static/fonts/NotoNastaliqUrdu-Variable.ttf` (with `.streamlit/config.toml` enabling static serving), and `requirements.txt`. Optionally set the secret `NDMA_MODEL_SHA256` to the digest in the manifest, so integrity checking does not rely on a file stored next to the model.
 
@@ -334,6 +339,12 @@ What the app needs to boot, all committed (none excluded by `.gitignore`): `mode
 ## Author
 
 Built as part of an application for **Assistant Manager (AI/ML) — PPS-7, National Disaster Management Authority, Pakistan**.
+
+## Contributing, security, and citation
+
+- Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+- Security issues: report privately, as described in [SECURITY.md](SECURITY.md).
+- Citing this project: GitHub's *Cite this repository* button reads [CITATION.cff](CITATION.cff).
 
 ## License
 

@@ -1,9 +1,17 @@
 [project]
-name = "pakistan-multi-hazard-risk-analyzer"
+name = "nigehban"
 version = "2.0.0"
-description = "Explainable multi-hazard risk demonstrator for Pakistani districts (synthetic data)."
+description = "Nigehban: explainable multi-hazard risk demonstrator for Pakistani districts (synthetic data)."
+readme = "README.md"
 requires-python = ">=3.12,<3.13"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["disaster-risk", "multi-hazard", "explainable-ai", "shap", "streamlit", "pakistan"]
+
+[project.urls]
+Repository = "https://github.com/meeasadamin/NIGEHBAN"
+Issues = "https://github.com/meeasadamin/NIGEHBAN/issues"
+Changelog = "https://github.com/meeasadamin/NIGEHBAN/blob/main/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

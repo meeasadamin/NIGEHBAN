@@ -1,0 +1,22 @@
+name: Feature or data request
+description: Suggest an improvement, a new analysis, or a real data source that could replace a synthetic input.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: For a new data source, include its name, licence, coverage, and a link.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

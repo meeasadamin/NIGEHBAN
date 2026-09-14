@@ -1,0 +1,15 @@
+# Keeps the SHA-pinned GitHub Actions current.
+# Python dependencies are deliberately not managed here: requirements*.txt are uv-compiled locks
+# (see README → Usage), and the model bundle records the library versions it was trained with,
+# so upgrades go through `uv pip compile` plus a retrain rather than automated pull requests.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

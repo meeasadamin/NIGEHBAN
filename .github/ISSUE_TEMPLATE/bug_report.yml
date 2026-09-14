@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in the dashboard, data pipeline, or training does not work as documented.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Nigehban is a portfolio demonstrator on **synthetic** climate data and is not an
+        operational forecasting system, so please do not report real-world risk disagreements as bugs.
+        Security problems belong in a private report instead (see SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Select district "Gwadar"
+        2. Move "Summer max temperature" to the maximum
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dashboard (app.py / ui_theme.py)
+        - Risk engine (risk_engine.py)
+        - Data generation (generate_data.py)
+        - Training (train.py)
+        - CI / tooling
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, browser (for UI issues), and whether you used requirements.txt or requirements-dev.txt.
+      placeholder: Windows 11, Python 3.12.13, Edge 140, requirements-dev.txt
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste terminal output (the dashboard shows an incident reference instead of a traceback).
+      render: text
