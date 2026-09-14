@@ -56,7 +56,7 @@ def test_simulated_scenario_banner_is_always_shown(app: AppTest) -> None:
 def test_three_kpi_cards_charts_and_two_downloads(app: AppTest) -> None:
     cards = next(m for m in _markdown(app) if 'class="kpi-grid"' in m)
     assert cards.count('class="kpi-card"') == 3
-    assert cards.count('class="kpi-meter"') == 3
+    assert cards.count('class="kpi-gauge"') == 3
     assert len(app.get("download_button")) == 2
     assert len(app.get("plotly_chart")) >= 2  # SHAP waterfall + national map (+ planning maps)
 

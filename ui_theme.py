@@ -21,6 +21,7 @@ everything else (normal-vision ΔE 22.5, CVD ΔE 16.2).
 from __future__ import annotations
 
 import html
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,8 +58,8 @@ LEVEL_COLORS: Final[dict[str, str]] = {"Low": "#0077BB", "Medium": "#CC6677", "H
 LEVEL_SYMBOLS: Final[dict[str, str]] = {"Low": "●", "Medium": "◆", "High": "▲"}
 
 #: Card gradient as (hex colour, alpha) stops. High alpha keeps the "glass" look
-#: subtle while guaranteeing contrast; 0.92/0.80 are judgment values.
-CARD_GRADIENT_STOPS: Final[tuple[tuple[str, float], ...]] = (("#FFFFFF", 0.92), ("#E2E8F0", 0.80))
+#: subtle while guaranteeing contrast; 0.96/0.92 are judgment values (lightened for the gauge pass).
+CARD_GRADIENT_STOPS: Final[tuple[tuple[str, float], ...]] = (("#FFFFFF", 0.96), ("#F1F5F9", 0.92))
 CARD_BORDER_RGBA: Final[str] = "rgba(148, 163, 184, 0.45)"  # slate-400 hairline
 CARD_SHADOW: Final[str] = "0 10px 30px rgba(15, 23, 42, 0.10), 0 1px 3px rgba(15, 23, 42, 0.08)"
 CARD_RADIUS_PX: Final[int] = 16
@@ -69,10 +70,21 @@ LEVEL_FONT_PX: Final[int] = 28
 BODY_FONT_PX: Final[int] = 15
 SMALL_FONT_PX: Final[int] = 13
 
-#: P(High) meter: the fill is the High hue on every card (red always means High);
-#: the track is a light step of the same hue, per the dataviz meter spec.
-METER_FILL: Final[str] = LEVEL_COLORS["High"]
-METER_TRACK: Final[str] = "#FBE3DD"
+#: P(High) gauge on each KPI card. The value arc wears the card's level colour (the level word and
+#: shape are always printed beside it); the thin outer band marks the High zone in the High hue, so
+#: red on the dial always means "High starts here". The needle and threshold tick are primary ink.
+GAUGE_TRACK: Final[str] = "#E2E8F0"  # slate-200: decorative track, the value is also printed as text
+GAUGE_ZONE: Final[str] = LEVEL_COLORS["High"]
+GAUGE_NEEDLE: Final[str] = TEXT_PRIMARY
+#: Inline probability bars in tables: same encoding (level colour on a neutral track, value printed).
+BAR_TRACK: Final[str] = "#E2E8F0"
+
+#: Table badges.
+REAL_BADGE_BACKGROUND: Final[str] = "#E8F3EC"  # light flag green
+REAL_BADGE_TEXT: Final[str] = "#01411C"
+INSIGHT_BACKGROUND: Final[str] = "#F0F7F3"  # "Why" callout, flag-green tint
+#: Sidebar logo (emblem + wordmark in flag green), rendered by scripts/build_logo.py.
+LOGO_PATH: Final[Path] = Path(__file__).resolve().parent / "static" / "nigehban-logo.png"
 
 BANNER_BACKGROUND: Final[str] = "#FEF3C7"  # amber-100
 BANNER_TEXT: Final[str] = "#78350F"  # amber-900
@@ -178,7 +190,19 @@ def contrast_requirements() -> tuple[ContrastRequirement, ...]:
         ContrastRequirement("card hazard name (13px)", TEXT_SECONDARY, surfaces, 4.5),
         ContrastRequirement("card detail text (15px)", TEXT_SECONDARY, surfaces, 4.5),
         ContrastRequirement("card change chip text (13px)", TEXT_PRIMARY, white, 4.5),
-        ContrastRequirement("P(High) meter fill vs track (graphic)", METER_FILL, (METER_TRACK,), 3.0),
+        ContrastRequirement("gauge High-zone band (graphic)", GAUGE_ZONE, surfaces, 3.0),
+        ContrastRequirement("gauge needle and threshold tick (graphic)", GAUGE_NEEDLE, surfaces, 3.0),
+        ContrastRequirement("gauge value and scale labels (13-30px)", TEXT_PRIMARY, surfaces, 4.5),
+        ContrastRequirement("gauge 0% / 100% labels (13px)", TEXT_MUTED, surfaces, 4.5),
+        ContrastRequirement("table header (12px bold)", TEXT_MUTED, (SECTION_BACKGROUND,), 4.5),
+        ContrastRequirement("table body (14px)", TEXT_PRIMARY, (PAGE_BACKGROUND, SECTION_BACKGROUND), 4.5),
+        ContrastRequirement("'Real' badge (12px)", REAL_BADGE_TEXT, (REAL_BADGE_BACKGROUND,), 4.5),
+        ContrastRequirement("'Changed' badge (12px)", BANNER_TEXT, (BANNER_BACKGROUND,), 4.5),
+        ContrastRequirement("'Synthetic' badge and level pill (12-13px)", TEXT_SECONDARY, (CHIP_BACKGROUND,), 4.5),
+        ContrastRequirement("insight callout text (15px)", TEXT_PRIMARY, (INSIGHT_BACKGROUND,), 4.5),
+        ContrastRequirement("insight callout accent rule (graphic)", HEADER_STOPS[0], (INSIGHT_BACKGROUND,), 3.0),
+        ContrastRequirement("sidebar logo (graphic + wordmark)", HEADER_STOPS[0], (SECTION_BACKGROUND,), 4.5),
+        ContrastRequirement("stat tile value and label", TEXT_MUTED, white, 4.5),
         ContrastRequirement("section subtitles and captions (14px)", TEXT_MUTED, white, 4.5),
         ContrastRequirement("waterfall labels, ticks, values (13px)", TEXT_SECONDARY, white, 4.5),
         ContrastRequirement("waterfall 'raises' bars (graphic)", RAISES_COLOR, white, 3.0),
@@ -195,6 +219,11 @@ def contrast_requirements() -> tuple[ContrastRequirement, ...]:
             ContrastRequirement(f"{level} level word ({LEVEL_FONT_PX}px bold = large text)", color, surfaces, 3.0)
         )
         requirements.append(ContrastRequirement(f"{level} card accent border (graphic)", color, surfaces, 3.0))
+        requirements.append(ContrastRequirement(f"{level} gauge value arc (graphic)", color, surfaces, 3.0))
+        requirements.append(ContrastRequirement(f"{level} table probability bar (graphic)", color, white, 3.0))
+        requirements.append(
+            ContrastRequirement(f"{level} pill symbol (graphic, word printed)", color, (CHIP_BACKGROUND,), 3.0)
+        )
     return tuple(requirements)
 
 
@@ -266,30 +295,102 @@ def page_css() -> str:
 .section-head {{ margin: 1.25rem 0 0.35rem 0; }}
 .section-head .section-title {{ color: {TEXT_PRIMARY}; font-size: 20px; font-weight: 700; }}
 .section-head .section-sub {{ color: {TEXT_MUTED}; font-size: 14px; }}
-.section-head.panel {{ margin: 0.1rem 0 0.6rem 0; }}
-.section-head.panel .section-title {{ font-size: 17px; }}
-.kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; margin: 0.25rem 0 0.5rem 0; }}
+.section-head.panel {{ margin: 0 0 0.5rem 0; padding-bottom: 0.65rem; border-bottom: 1px solid {HAIRLINE}; }}
+.section-head.panel .section-title {{ font-size: 18px; line-height: 1.3; }}
+.section-head.panel .section-sub {{ margin-top: 0.1rem; line-height: 1.45; }}
+.sub-head {{ color: {TEXT_PRIMARY}; font-size: 15px; font-weight: 700; margin: 0.75rem 0 0 0; }}
+.pill-row {{ display: flex; flex-wrap: wrap; gap: 0.3rem; }}
+.two-line {{ display: flex; flex-direction: column; line-height: 1.3; }}
+.two-line .p {{ font-weight: 600; color: {TEXT_PRIMARY}; white-space: nowrap; }}
+.two-line .s {{ color: {TEXT_MUTED}; font-size: 13px; white-space: nowrap; }}
+.data-table .in-range {{ color: {TEXT_MUTED}; font-size: 13px; white-space: nowrap; }}
+.sub-head .sub-note {{ color: {TEXT_MUTED}; font-size: 13px; font-weight: 400; margin-left: 0.4rem; }}
+.note {{ color: {TEXT_MUTED}; font-size: 13px; line-height: 1.55; }}
+
+/* ---- KPI cards: speedometer gauge for P(High) ---- */
+.kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin: 0.25rem 0 0.25rem 0; }}
 .kpi-card {{
-  background: linear-gradient(135deg, {_rgba(c0, a0)} 0%, {_rgba(c1, a1)} 100%);
+  background: linear-gradient(160deg, {_rgba(c0, a0)} 0%, {_rgba(c1, a1)} 100%);
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  border: 1px solid {CARD_BORDER_RGBA}; border-left: 6px solid var(--level);
-  border-radius: {CARD_RADIUS_PX}px; box-shadow: {CARD_SHADOW}; padding: 0.95rem 1.1rem 1rem 1.1rem;
+  border: 1px solid {CARD_BORDER_RGBA}; border-top: 5px solid var(--level);
+  border-radius: {CARD_RADIUS_PX}px; box-shadow: {CARD_SHADOW}; padding: 0.85rem 1.1rem 0.95rem 1.1rem;
+  display: flex; flex-direction: column;
 }}
 /* <div> (not <p>) plus three-class selectors: Streamlit's markdown styles set p font-size, which
    silently shrank the level word to 16px (measured in Edge) and broke the large-text contrast rule. */
-.kpi-grid .kpi-card .kpi-top {{ display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }}
+.kpi-grid .kpi-card .kpi-top {{ display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; min-height: 1.6rem; }}
 .kpi-grid .kpi-card .kpi-hazard {{ color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; font-weight: 700;
-  letter-spacing: 0.06em; text-transform: uppercase; }}
+  letter-spacing: 0.08em; text-transform: uppercase; }}
 .kpi-grid .kpi-card .kpi-chip {{ background: {PAGE_BACKGROUND}; border: 1px solid {CHIP_BORDER}; color: {TEXT_PRIMARY};
   border-radius: 999px; padding: 0.05rem 0.55rem; font-size: {SMALL_FONT_PX}px; font-weight: 600; white-space: nowrap; }}
-.kpi-grid .kpi-card .kpi-level {{ color: var(--level); font-size: {LEVEL_FONT_PX}px; font-weight: 700; line-height: 1.2;
-  margin: 0.2rem 0 0.45rem 0; }}
-.kpi-grid .kpi-card .kpi-meter {{ height: 8px; border-radius: 999px; background: {METER_TRACK}; overflow: hidden; position: relative; }}
-.kpi-grid .kpi-card .kpi-meter > i {{ position: absolute; top: 0; bottom: 0; width: 2px; background: {TEXT_PRIMARY}; }}
-.kpi-grid .kpi-card .kpi-rule {{ font-size: {SMALL_FONT_PX}px; margin-top: 0.1rem; }}
-.kpi-grid .kpi-card .kpi-meter > span {{ display: block; height: 100%; background: {METER_FILL}; border-radius: 999px; }}
-.kpi-grid .kpi-card .kpi-detail {{ color: {TEXT_SECONDARY}; font-size: {BODY_FONT_PX}px; line-height: 1.45; margin: 0.45rem 0 0 0; }}
-.kpi-grid .kpi-card .kpi-detail strong {{ color: {TEXT_PRIMARY}; }}
+.kpi-grid .kpi-card .kpi-gauge {{ display: block; width: 100%; max-width: 15.5rem; margin: 0.4rem auto 0 auto; overflow: visible; }}
+.kpi-gauge .g-track {{ fill: none; stroke: {GAUGE_TRACK}; stroke-width: 16; stroke-linecap: round; }}
+.kpi-gauge .g-value {{ fill: none; stroke: var(--level); stroke-width: 16; stroke-linecap: round;
+  animation: gauge-fill 0.9s ease-out; }}
+.kpi-gauge .g-zone {{ fill: none; stroke: {GAUGE_ZONE}; stroke-width: 4; }}
+.kpi-gauge .g-tick {{ stroke: {GAUGE_NEEDLE}; stroke-width: 3; stroke-linecap: round; }}
+.kpi-gauge .g-needle {{ fill: {GAUGE_NEEDLE}; transform-box: view-box; transform-origin: 100px 100px;
+  transform: rotate(var(--angle)); animation: needle-in 1s cubic-bezier(0.2, 0.8, 0.2, 1); }}
+.kpi-gauge .g-hub {{ fill: {PAGE_BACKGROUND}; }}
+.kpi-gauge .g-label {{ fill: {TEXT_MUTED}; font-size: 11px; font-weight: 600; }}
+@keyframes gauge-fill {{ from {{ stroke-dasharray: 0 100; }} }}
+@keyframes needle-in {{ from {{ transform: rotate(0deg); }} }}
+@media (prefers-reduced-motion: reduce) {{ .kpi-gauge .g-value, .kpi-gauge .g-needle {{ animation: none; }} }}
+.kpi-grid .kpi-card .kpi-value {{ color: {TEXT_PRIMARY}; font-size: 30px; font-weight: 700; line-height: 1.1;
+  text-align: center; margin-top: 0.15rem; font-variant-numeric: tabular-nums; }}
+.kpi-grid .kpi-card .kpi-caption {{ color: {TEXT_MUTED}; font-size: {SMALL_FONT_PX}px; text-align: center; }}
+.kpi-grid .kpi-card .kpi-foot {{ display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  gap: 0.15rem 0.75rem; border-top: 1px solid {HAIRLINE}; margin-top: 0.7rem; padding-top: 0.55rem; }}
+.kpi-grid .kpi-card .kpi-level {{ color: var(--level); font-size: {LEVEL_FONT_PX}px; font-weight: 700; line-height: 1.2; }}
+.kpi-grid .kpi-card .kpi-rule {{ color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; text-align: right; line-height: 1.35; }}
+.kpi-grid .kpi-card .kpi-rule strong {{ color: {TEXT_PRIMARY}; }}
+.kpi-grid .kpi-card .kpi-zone-key {{ display: inline-block; width: 12px; height: 4px; background: {GAUGE_ZONE};
+  vertical-align: middle; margin-right: 0.3rem; border-radius: 2px; }}
+
+/* ---- Tables ---- */
+.table-wrap {{ overflow: auto; border: 1px solid {HAIRLINE}; border-radius: 12px; background: {PAGE_BACKGROUND}; }}
+.table-wrap:focus-visible {{ outline: 2px solid {LEVEL_COLORS["Low"]}; outline-offset: 2px; }}
+.data-table {{ width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; color: {TEXT_PRIMARY};
+  font-variant-numeric: tabular-nums; margin: 0; }}
+.data-table caption {{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }}
+.data-table th {{ position: sticky; top: 0; z-index: 1; background: {SECTION_BACKGROUND}; color: {TEXT_MUTED};
+  font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; text-align: left;
+  padding: 0.6rem 0.85rem; border-bottom: 1px solid {HAIRLINE}; white-space: nowrap; }}
+.data-table td {{ padding: 0.6rem 0.85rem; border-bottom: 1px solid {HAIRLINE}; vertical-align: middle; line-height: 1.4; }}
+.data-table tbody tr:last-child td {{ border-bottom: 0; }}
+.data-table tbody tr:hover td {{ background: {SECTION_BACKGROUND}; }}
+.data-table th.num, .data-table td.num {{ text-align: right; white-space: nowrap; }}
+.data-table td.strong {{ font-weight: 600; }}
+.data-table td.nowrap {{ white-space: nowrap; }}
+.pill {{ display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.08rem 0.55rem; border-radius: 999px;
+  background: {CHIP_BACKGROUND}; border: 1px solid {CHIP_BORDER}; color: {TEXT_SECONDARY}; font-size: 13px;
+  font-weight: 600; white-space: nowrap; }}
+.pill .sym {{ color: var(--level); }}
+.badge {{ display: inline-block; padding: 0.05rem 0.5rem; border-radius: 6px; font-size: 12px; font-weight: 600;
+  white-space: nowrap; background: {CHIP_BACKGROUND}; color: {TEXT_SECONDARY}; margin-left: 0.35rem; }}
+.badge.real {{ background: {REAL_BADGE_BACKGROUND}; color: {REAL_BADGE_TEXT}; margin-left: 0; }}
+.badge.synthetic {{ margin-left: 0; }}
+.badge.changed {{ background: {BANNER_BACKGROUND}; color: {BANNER_TEXT}; }}
+.pbar {{ display: flex; align-items: center; gap: 0.6rem; min-width: 8.5rem; }}
+.pbar .track {{ flex: 1; height: 8px; border-radius: 999px; background: {BAR_TRACK}; overflow: hidden; }}
+.pbar .fill {{ display: block; height: 100%; border-radius: 999px; background: var(--level); }}
+.pbar .val {{ min-width: 3.4rem; text-align: right; font-weight: 600; }}
+
+/* ---- Stat tiles, insight callout, chart legend ---- */
+.stat-tiles {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.75rem;
+  margin: 0.25rem 0 0.35rem 0; }}
+.stat-tile {{ background: {PAGE_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 12px; padding: 0.7rem 0.95rem;
+  box-shadow: {PANEL_SHADOW}; }}
+.stat-tile.lead {{ border-top: 4px solid {HEADER_STOPS[0]}; }}
+.stat-tile .v {{ color: {TEXT_PRIMARY}; font-size: 28px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }}
+.stat-tile .l {{ color: {TEXT_MUTED}; font-size: 13px; line-height: 1.35; margin-top: 0.1rem; }}
+.insight {{ background: {INSIGHT_BACKGROUND}; border-left: 4px solid {HEADER_STOPS[0]}; border-radius: 10px;
+  padding: 0.7rem 0.95rem; color: {TEXT_PRIMARY}; font-size: {BODY_FONT_PX}px; line-height: 1.55; }}
+.insight .insight-label {{ display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: {TEXT_SECONDARY}; margin-bottom: 0.15rem; }}
+.chart-legend {{ display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; }}
+.chart-legend .key {{ display: inline-flex; align-items: center; gap: 0.4rem; }}
+.chart-legend .sw {{ width: 12px; height: 12px; border-radius: 3px; display: inline-block; }}
 .map-legend {{ display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; margin: 0.35rem 0 0 0; }}
 .map-legend .key {{ display: inline-flex; align-items: center; gap: 0.35rem; }}
 .map-legend .dot {{ width: 10px; height: 10px; border-radius: 50%; display: inline-block; }}
@@ -339,14 +440,12 @@ def page_css() -> str:
 
 /* ---- Sidebar ---- */
 [data-testid="stSidebar"] {{ background: {SECTION_BACKGROUND}; border-right: 1px solid {HAIRLINE}; }}
-[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {{ padding-top: 0.5rem; }}
-.sb-brand {{
-  display: flex; align-items: center; gap: 0.7rem; background: linear-gradient(135deg, {h0} 0%, {h1} 100%);
-  border-radius: 14px; padding: 0.7rem 0.9rem; margin-bottom: 0.5rem;
-}}
-.sb-brand .brand-emblem {{ width: 30px; height: 35px; flex: none; }}
-.sb-brand .sb-name {{ color: {HEADER_TITLE}; font-size: 17px; font-weight: 700; letter-spacing: 0.2em; line-height: 1.2; }}
-.sb-brand .sb-sub {{ color: {HEADER_TITLE}; font-size: 12px; opacity: 1; letter-spacing: 0.04em; }}
+/* Logo sits in Streamlit's own sidebar header row (st.logo), level with the collapse button. */
+[data-testid="stSidebar"] [data-testid="stSidebarHeader"] {{ padding-bottom: 0.9rem; margin-bottom: 0.25rem;
+  border-bottom: 1px solid {HAIRLINE}; }}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {{ padding-top: 0.75rem; }}
+.sb-intro {{ color: {TEXT_MUTED}; font-size: 13px; line-height: 1.45; padding: 0 0.15rem 0.15rem 0.15rem; }}
+.sb-intro strong {{ color: {TEXT_PRIMARY}; display: block; font-size: 15px; }}
 [data-testid="stSidebar"] [class*="st-key-sb_"] {{
   background: {PAGE_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 14px;
   box-shadow: {PANEL_SHADOW}; padding: 0.8rem 0.9rem 0.9rem 0.9rem; gap: 0.55rem;
@@ -370,12 +469,13 @@ def page_css() -> str:
 # --------------------------------------------------------------------------
 
 
-def emblem_svg() -> str:
+def emblem_svg(stroke: str = HEADER_TITLE) -> str:
     """Nigehban emblem: a shield (protection) holding a watchful eye (the watchman), drawn inline.
 
-    Pure SVG so it renders identically on any deployment with no image asset to host.
+    Pure SVG so it renders identically on any deployment with no image asset to host. ``stroke`` is
+    white on the green header and flag green for the light sidebar logo.
     """
-    white, gold = HEADER_TITLE, EMBLEM_ACCENT
+    white, gold = stroke, EMBLEM_ACCENT
     return (
         '<svg class="brand-emblem" viewBox="0 0 54 62" role="img" aria-label="Nigehban emblem: shield with a watchful eye">'
         f'<path d="M27 3 L50 11 V29 C50 44 40 54 27 59 C14 54 4 44 4 29 V11 Z" fill="none" stroke="{white}" '
@@ -463,13 +563,11 @@ def phone_hint_html() -> str:
     )
 
 
-def sidebar_brand_html() -> str:
-    """Compact brand block at the top of the sidebar."""
+def sidebar_intro_html() -> str:
+    """Short title under the sidebar logo."""
     return (
-        '<div class="sb-brand">'
-        f"{emblem_svg()}"
-        '<div><div class="sb-name">NIGEHBAN</div><div class="sb-sub">Scenario controls</div></div>'
-        "</div>"
+        '<div class="sb-intro"><strong>Scenario controls</strong>'
+        "Pick a district, then move the sliders to test a what-if.</div>"
     )
 
 
@@ -487,39 +585,220 @@ def sidebar_meta_html(items: Sequence[str]) -> str:
 def kpi_card_html(
     hazard: str, level: str, p_high: float, baseline_p_high: float | None, high_threshold: float | None = None
 ) -> str:
-    """Render one KPI stat tile.
+    """Render one KPI card with a speedometer gauge for P(High).
 
     Args:
         hazard: Hazard display name.
         level: ``Low``/``Medium``/``High``.
         p_high: Calibrated probability of High, 0-1.
         baseline_p_high: P(High) for the unmodified inputs, or None when the inputs are unmodified.
-        high_threshold: P(High) at which this hazard is flagged High; drawn as a tick on the meter so a
-            "High" label with P(High) below 50% is explained on the card itself.
+        high_threshold: P(High) at which this hazard is flagged High; drawn as the start of the red
+            High zone on the dial, so a "High" label with P(High) below 50% is explained on the card.
     """
     if level not in LEVEL_COLORS:
         raise ValueError(f"Unknown level {level!r}")
-    width = f"{max(0.0, min(1.0, p_high)) * 100:.1f}%"
-    chip = detail_extra = tick = ""
+    chip = detail = ""
     if baseline_p_high is not None:
         change = (p_high - baseline_p_high) * 100
         arrow = "▲" if change > 0.05 else "▼" if change < -0.05 else "■"
         chip = f'<span class="kpi-chip">{arrow} {change:+.1f} pts</span>'
-        detail_extra = f" · unmodified {baseline_p_high:.1%}"
-    threshold_note = ""
-    if high_threshold is not None:
-        tick = f'<i style="left: {high_threshold * 100:.1f}%"></i>'
-        threshold_note = f'<div class="kpi-detail kpi-rule">Flagged High at P(High) ≥ {high_threshold:.0%}</div>'
+        detail = f" · unmodified {baseline_p_high:.1%}"
+    rule = (
+        f'<div class="kpi-rule"><span class="kpi-zone-key" aria-hidden="true"></span>'
+        f"High zone from <strong>{high_threshold:.0%}</strong></div>"
+        if high_threshold is not None
+        else ""
+    )
     return (
         f'<div class="kpi-card" style="--level: {LEVEL_COLORS[level]}" role="group" '
         f'aria-label="{html.escape(hazard)} risk: {html.escape(level)}, probability of High {p_high:.1%}">'
         f'<div class="kpi-top"><span class="kpi-hazard">{html.escape(hazard)} risk</span>{chip}</div>'
+        f"{gauge_svg(p_high, high_threshold)}"
+        f'<div class="kpi-value">{p_high:.1%}</div>'
+        f'<div class="kpi-caption">chance of High{html.escape(detail)}</div>'
+        '<div class="kpi-foot">'
         f'<div class="kpi-level"><span aria-hidden="true">{LEVEL_SYMBOLS[level]}</span> {html.escape(level)}</div>'
-        f'<div class="kpi-meter" aria-hidden="true"><span style="width: {width}"></span>{tick}</div>'
-        f'<div class="kpi-detail">P(High) <strong>{p_high:.1%}</strong>{html.escape(detail_extra)}</div>'
-        f"{threshold_note}"
+        f"{rule}"
+        "</div>"
         "</div>"
     )
+
+
+def _arc_point(fraction: float, radius: float) -> tuple[float, float]:
+    """Point on the gauge's upper semicircle (centre 100,100): fraction 0 is left, 1 is right."""
+    angle = math.pi * (1.0 - fraction)
+    return 100.0 + radius * math.cos(angle), 100.0 - radius * math.sin(angle)
+
+
+def gauge_svg(p_high: float, high_threshold: float | None) -> str:
+    """Semicircular P(High) speedometer: track, value arc, High-zone band, threshold tick, needle.
+
+    Arcs use ``pathLength="100"`` so dash lengths are plain percentages. Colour comes from the card's
+    ``--level`` variable; the value is also printed as text beside the gauge, so the SVG is decorative.
+    """
+    value = max(0.0, min(1.0, p_high))
+    arc = "M20 100 A80 80 0 0 1 180 100"
+    parts = [
+        '<svg class="kpi-gauge" viewBox="0 0 200 122" aria-hidden="true" focusable="false">',
+        f'<path class="g-track" d="{arc}" pathLength="100"/>',
+        f'<path class="g-value" d="{arc}" pathLength="100" stroke-dasharray="{value * 100:.2f} 100"/>',
+    ]
+    if high_threshold is not None:
+        t = max(0.0, min(1.0, high_threshold))
+        parts.append(
+            '<path class="g-zone" d="M4 100 A96 96 0 0 1 196 100" pathLength="100" '
+            f'stroke-dasharray="0 {t * 100:.2f} {(1 - t) * 100:.2f} 100"/>'
+        )
+        (x1, y1), (x2, y2) = _arc_point(t, 66), _arc_point(t, 99)
+        parts.append(f'<line class="g-tick" x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}"/>')
+    parts += [
+        f'<g class="g-needle" style="--angle: {value * 180:.1f}deg">'
+        '<path d="M100 94.5 L38 100 L100 105.5 Z"/><circle cx="100" cy="100" r="9"/>'
+        '<circle class="g-hub" cx="100" cy="100" r="3.2"/></g>',
+        '<text class="g-label" x="20" y="120" text-anchor="middle">0%</text>',
+        '<text class="g-label" x="180" y="120" text-anchor="middle">100%</text>',
+        "</svg>",
+    ]
+    return "".join(parts)
+
+
+# --------------------------------------------------------------------------
+# Tables, stat tiles, callouts
+# --------------------------------------------------------------------------
+
+
+class SafeHtml(str):
+    """Markup built by this module; table cells of this type are inserted unescaped, plain ``str`` is escaped."""
+
+    __slots__ = ()
+
+
+def _cell(value: object) -> str:
+    return value if isinstance(value, SafeHtml) else html.escape(str(value))
+
+
+@dataclass(frozen=True, slots=True)
+class Column:
+    """A table column: header text and an optional CSS class (``num``, ``strong``, ``nowrap``)."""
+
+    label: str
+    css: str = ""
+
+
+def data_table_html(
+    columns: Sequence[Column], rows: Sequence[Sequence[object]], caption: str, max_height_px: int | None = None
+) -> str:
+    """Accessible, styled HTML table with a sticky header; plain-text cells are escaped.
+
+    The wrapper scrolls horizontally on phones and vertically when ``max_height_px`` is set; it is a
+    focusable region so keyboard users can scroll it.
+    """
+
+    def css(column: Column) -> str:
+        return f' class="{html.escape(column.css)}"' if column.css else ""
+
+    head = "".join(f'<th scope="col"{css(c)}>{html.escape(c.label)}</th>' for c in columns)
+    body = "".join(
+        "<tr>" + "".join(f"<td{css(c)}>{_cell(v)}</td>" for c, v in zip(columns, row, strict=True)) + "</tr>"
+        for row in rows
+    )
+    style = f' style="max-height: {int(max_height_px)}px"' if max_height_px else ""
+    label = html.escape(caption)
+    return (
+        f'<div class="table-wrap" role="region" aria-label="{label}" tabindex="0"{style}>'
+        f'<table class="data-table"><caption>{label}</caption><thead><tr>{head}</tr></thead>'
+        f"<tbody>{body}</tbody></table></div>"
+    )
+
+
+def level_pill_html(level: str, suffix: str = "", label: str | None = None) -> SafeHtml:
+    """Level as shape + word in a neutral pill; the shape wears the level colour.
+
+    ``label`` replaces the level word (e.g. a hazard name in a column headed "High for"); the shape
+    still identifies the level.
+    """
+    if level not in LEVEL_COLORS:
+        raise ValueError(f"Unknown level {level!r}")
+    extra = f" {html.escape(suffix)}" if suffix else ""
+    return SafeHtml(
+        f'<span class="pill" style="--level: {LEVEL_COLORS[level]}"><span class="sym" aria-hidden="true">'
+        f"{LEVEL_SYMBOLS[level]}</span>{html.escape(label or level)}{extra}</span>"
+    )
+
+
+def prob_bar_html(probability: float, level: str, decimals: int = 1) -> SafeHtml:
+    """Inline probability bar in the given level's colour, with the value printed."""
+    value = max(0.0, min(1.0, probability))
+    return SafeHtml(
+        f'<div class="pbar" style="--level: {LEVEL_COLORS[level]}"><span class="track" aria-hidden="true">'
+        f'<span class="fill" style="width: {value * 100:.1f}%"></span></span>'
+        f'<span class="val">{probability:.{decimals}%}</span></div>'
+    )
+
+
+def badge_html(text: str, kind: str = "") -> SafeHtml:
+    """Small rectangular badge; ``kind`` is ``real``, ``synthetic``, ``changed`` or empty."""
+    css = f"badge {kind}".strip()
+    return SafeHtml(f'<span class="{html.escape(css)}">{html.escape(text)}</span>')
+
+
+def pill_row_html(pills: Sequence[SafeHtml]) -> SafeHtml:
+    """Wrap several pills so they flow in a row and wrap cleanly in narrow cells."""
+    return SafeHtml(f'<div class="pill-row">{"".join(pills)}</div>')
+
+
+def two_line_html(primary: str, secondary: str) -> SafeHtml:
+    """Bold primary line with a muted second line (e.g. district over province) to save a column."""
+    return SafeHtml(
+        f'<div class="two-line"><span class="p">{html.escape(primary)}</span>'
+        f'<span class="s">{html.escape(secondary)}</span></div>'
+    )
+
+
+def muted_text_html(text: str) -> SafeHtml:
+    """Quiet table text for the unremarkable case (so the exceptions stand out)."""
+    return SafeHtml(f'<span class="in-range">{html.escape(text)}</span>')
+
+
+def text_with_badge_html(text: str, badge: SafeHtml | None) -> SafeHtml:
+    """Escaped text followed by an optional badge."""
+    return SafeHtml(html.escape(text) + (badge or ""))
+
+
+def stat_tiles_html(tiles: Sequence[tuple[str, str]]) -> str:
+    """Row of headline numbers: ``(value, label)``; the first tile carries the accent."""
+    items = "".join(
+        f'<div class="stat-tile{" lead" if i == 0 else ""}"><div class="v">{html.escape(value)}</div>'
+        f'<div class="l">{html.escape(label)}</div></div>'
+        for i, (value, label) in enumerate(tiles)
+    )
+    return f'<div class="stat-tiles">{items}</div>'
+
+
+def insight_html(label: str, text: str) -> str:
+    """Highlighted plain-language finding (e.g. the SHAP 'why' sentence)."""
+    return f'<div class="insight"><span class="insight-label">{html.escape(label)}</span>{html.escape(text)}</div>'
+
+
+def sub_head_html(title: str, note: str = "") -> str:
+    """Small heading inside a panel, with an optional inline note."""
+    extra = f'<span class="sub-note">{html.escape(note)}</span>' if note else ""
+    return f'<div class="sub-head">{html.escape(title)}{extra}</div>'
+
+
+def note_html(text: str) -> str:
+    """Muted explanatory text in a smaller size than body copy."""
+    return f'<div class="note">{html.escape(text)}</div>'
+
+
+def chart_legend_html(keys: Sequence[tuple[str, str]]) -> str:
+    """Legend of colour swatches: ``(hex colour, label)``."""
+    items = "".join(
+        f'<span class="key"><span class="sw" style="background: {html.escape(color)}"></span>'
+        f"{html.escape(label)}</span>"
+        for color, label in keys
+    )
+    return f'<div class="chart-legend">{items}</div>'
 
 
 def planning_label_html(title: str, body: str) -> str:

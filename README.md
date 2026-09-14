@@ -27,7 +27,7 @@ This is version 2. Version 1 was audited and rebuilt; every change is traced to 
 
 ## What it does
 
-- Scores Low / Medium / High risk for three hazards per district, with **calibrated probabilities**, shown as KPI tiles with a P(High) meter.
+- Scores Low / Medium / High risk for three hazards per district, with **calibrated probabilities**, shown as KPI cards with a P(High) speedometer gauge whose red band marks where the High zone starts.
 - Explains every score with SHAP, as an interactive waterfall per hazard plus a one-sentence insight derived from the top two SHAP values.
 - A single hazard selector drives both the explanation and a **national map** of where that hazard is predicted High, drawn over the real active-fault and coastline layers.
 - Lets a user change six climate and exposure inputs in a **what-if simulator** whose sliders cannot leave the range the model was trained on, and flags input combinations unlike any real district. Changed inputs appear as chips, and each KPI tile shows the change against unmodified inputs.
@@ -188,17 +188,19 @@ Both tools label themselves **HYPOTHETICAL SCENARIO — what-if analysis, not a 
 
 | Element | Colours | Worst-case contrast | WCAG AA threshold |
 |---|---|---|---|
-| Header title / subtitle / eyebrow | `#FFFFFF` / `#DCE6F2` / `#BFD7ED` on navy gradient | 12.95 / 10.26 / 8.73:1 | 4.5:1 |
+| Brand wordmark / tagline / small caps | `#FFFFFF` / `#DCEFE3` / `#CFE5D8` on flag-green gradient | 8.09 / 6.74 / 6.10:1 | 4.5:1 |
 | Banner text | `#78350F` on `#FEF3C7` | 8.15:1 | 4.5:1 |
-| Card hazard name and detail text (13–15px) | `#334155` on card | 8.80:1 | 4.5:1 |
-| Level word, Low (28px bold) | `#0077BB` on card | 4.09:1 | 3:1 (large text) |
-| Level word, Medium (28px bold) | `#CC6677` on card | 3.11:1 | 3:1 (large text) |
-| Level word, High (28px bold) | `#CC3311` on card | 4.41:1 | 3:1 (large text) |
-| P(High) meter fill vs track | `#CC3311` on `#FBE3DD` | 4.23:1 | 3:1 (graphic) |
+| Card hazard name and detail text (13–15px) | `#334155` on card | 9.53:1 | 4.5:1 |
+| Level word and gauge arc, Low (28px bold) | `#0077BB` on card | 4.44:1 | 3:1 (large text, graphic) |
+| Level word and gauge arc, Medium (28px bold) | `#CC6677` on card | 3.37:1 | 3:1 (large text, graphic) |
+| Level word and gauge arc, High (28px bold) | `#CC3311` on card | 4.77:1 | 3:1 (large text, graphic) |
+| Gauge High-zone band / needle | `#CC3311` / `#0F172A` on card | 4.77 / 16.43:1 | 3:1 (graphic) |
+| Table header (12px bold) | `#475569` on `#F8FAFC` | 7.24:1 | 4.5:1 |
+| Table level pill shape, Medium | `#CC6677` on `#F1F5F9` | 3.34:1 | 3:1 (graphic, word printed) |
 | Waterfall labels and values (13px) | `#334155` on white | 10.35:1 | 4.5:1 |
 | Map: High / other districts | `#CC3311` / `#64748B` on white | 5.19 / 4.76:1 | 3:1 (graphic) |
 
-27 pairs are checked in total; the table lists the ones most likely to be questioned. `#CC6677` does **not** meet 4.5:1, so it is used only as 28px bold text and as a graphic. The light theme is locked in `.streamlit/config.toml` because contrast in a dark theme has not been verified.
+54 pairs are checked in total; the table lists the ones most likely to be questioned. `#CC6677` does **not** meet 4.5:1, so it is used only as 28px bold text and as a graphic. The light theme is locked in `.streamlit/config.toml` because contrast in a dark theme has not been verified.
 
 **A limit of the specified palette, and how the UI handles it.** Checked with a colour-separation validator, Medium `#CC6677` and High `#CC3311` are only ΔE 11.8 apart for *normal* vision (the floor for telling marks apart by colour is 15). On the KPI tiles that is acceptable, because the level word and shape are always printed. On the map, where dots sit side by side, it is not, so the map uses emphasis encoding instead: High in `#CC3311`, every other district in slate `#64748B` (ΔE 22.5 normal vision, 16.2 under colour-blindness simulation), with a legend and a table view.
 

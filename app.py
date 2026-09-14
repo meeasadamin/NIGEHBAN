@@ -128,7 +128,9 @@ def render_sidebar(df: pd.DataFrame, domain: engine.ApplicabilityDomain) -> tupl
         ``(district, overrides)`` where overrides hold every tunable slider value.
     """
     sidebar = st.sidebar
-    sidebar.markdown(theme.sidebar_brand_html(), unsafe_allow_html=True)  # static markup only
+    # Native logo slot: level with the sidebar's collapse button, and still shown top-left when collapsed.
+    st.logo(str(theme.LOGO_PATH), size="large", icon_image=str(FAVICON_PATH))
+    sidebar.markdown(theme.sidebar_intro_html(), unsafe_allow_html=True)  # static markup only
 
     with sidebar.container(key="sb_district"):
         st.markdown(theme.sidebar_card_head_html("District"), unsafe_allow_html=True)
@@ -234,10 +236,10 @@ def waterfall_figure(explanation: engine.HazardExplanation) -> go.Figure:
             measure=["absolute", *["relative"] * len(ordered), "total"],
             y=labels,
             x=values,
-            width=0.55,  # thin bars with air between them (dataviz mark spec)
+            width=0.6,  # thin bars with air between them (dataviz mark spec)
             text=text,
             textposition="outside",
-            textfont={"color": theme.TEXT_SECONDARY},
+            textfont={"color": theme.TEXT_PRIMARY, "size": 13},
             cliponaxis=False,
             increasing={"marker": {"color": theme.RAISES_COLOR}},
             decreasing={"marker": {"color": theme.LOWERS_COLOR}},
@@ -249,8 +251,9 @@ def waterfall_figure(explanation: engine.HazardExplanation) -> go.Figure:
     # Short axis title: the longer form clipped at 390px width.
     unit = "Uncalibrated P(High)" if probability else "Log-odds of High"
     figure.update_layout(
-        height=90 + 44 * len(labels),
-        margin={"l": 4, "r": 12, "t": 8, "b": 8},
+        height=80 + 46 * len(labels),
+        margin={"l": 4, "r": 12, "t": 4, "b": 4},
+        bargap=0.35,
         xaxis={
             "title": {"text": unit, "font": {"color": theme.TEXT_SECONDARY}},
             "tickformat": ".0%" if probability else ".1f",
@@ -380,42 +383,52 @@ def render_explanation(assessment: engine.Assessment, target: str) -> None:
         ),
         unsafe_allow_html=True,
     )
-    st.markdown(f"**Why:** {assessment.insights[target]}")
+    st.markdown(theme.insight_html("Why", assessment.insights[target]), unsafe_allow_html=True)
+    st.markdown(
+        theme.chart_legend_html(
+            [
+                (theme.RAISES_COLOR, "+ raises the High score"),
+                (theme.LOWERS_COLOR, "− lowers it"),
+                (theme.TOTAL_COLOR, "Base and final score"),
+            ]
+        ),
+        unsafe_allow_html=True,
+    )
     # Mode bar hidden: it overlapped the top bar at phone width. Hover and pinch-zoom still work.
     st.plotly_chart(
         waterfall_figure(explanation), width="stretch", config={"displayModeBar": False, "responsive": True}
     )
+    st.markdown(theme.sub_head_html("Calibrated probabilities", "after temperature scaling"), unsafe_allow_html=True)
+    # Each bar wears its own row's level colour (the word and shape are printed beside it).
     st.markdown(
-        "Red bars with **+** raise the High score; blue bars with **−** lower it. The chart explains the "
-        "uncalibrated base model; the probabilities below are after temperature calibration, which rescales "
-        "confidence but never changes the predicted level."
-    )
-    st.dataframe(
-        pd.DataFrame(
-            {
-                "Level": [f"{theme.LEVEL_SYMBOLS[c]} {c}" for c in engine.CLASS_LABELS],
-                "Calibrated probability": prediction.probabilities,
-            }
+        theme.data_table_html(
+            [theme.Column("Level"), theme.Column("Probability")],
+            [
+                [theme.level_pill_html(level), theme.prob_bar_html(p, level, decimals=2)]
+                for level, p in zip(engine.CLASS_LABELS, prediction.probabilities, strict=True)
+            ],
+            caption=f"Calibrated {hazard.lower()} probabilities",
         ),
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Calibrated probability": st.column_config.ProgressColumn(format="percent", min_value=0.0, max_value=1.0)
-        },
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        theme.note_html(
+            "The chart explains the uncalibrated base model. Calibration rescales confidence but never changes "
+            "which level is most likely."
+        ),
+        unsafe_allow_html=True,
     )
     with st.expander("Table view of this chart"):
-        st.dataframe(
-            pd.DataFrame(
-                {
-                    "Feature": [c.label for c in explanation.contributions],
-                    "Value": [c.display_value for c in explanation.contributions],
-                    "Contribution": [
-                        engine.format_contribution(c.value, explanation.output_space) for c in explanation.contributions
-                    ],
-                }
+        st.markdown(
+            theme.data_table_html(
+                [theme.Column("Feature", "strong"), theme.Column("Value", "num"), theme.Column("Contribution", "num")],
+                [
+                    [c.label, c.display_value, engine.format_contribution(c.value, explanation.output_space)]
+                    for c in explanation.contributions
+                ],
+                caption=f"SHAP contributions to the High {hazard.lower()} score",
             ),
-            hide_index=True,
-            width="stretch",
+            unsafe_allow_html=True,
         )
 
 
@@ -442,13 +455,17 @@ def render_map_panel(
     st.markdown(theme.map_legend_html(hazard), unsafe_allow_html=True)  # static labels, escaped
     with st.expander(f"Table view: districts predicted High for {hazard.lower()}"):
         high_table = rows[rows["label"] == "High"].sort_values("p_high", ascending=False)
-        st.dataframe(
-            high_table[["district_name", "province", "p_high"]].rename(
-                columns={"district_name": "District", "province": "Province", "p_high": "P(High)"}
+        st.markdown(
+            theme.data_table_html(
+                [theme.Column("District"), theme.Column("P(High)")],
+                [
+                    [theme.two_line_html(r.district_name, r.province), theme.prob_bar_html(r.p_high, "High")]
+                    for r in high_table.itertuples()
+                ],
+                caption=f"Districts predicted High for {hazard.lower()}",
+                max_height_px=360,
             ),
-            hide_index=True,
-            width="stretch",
-            column_config={"P(High)": st.column_config.NumberColumn(format="percent")},
+            unsafe_allow_html=True,
         )
 
 
@@ -463,16 +480,33 @@ def render_profile_panel(assessment: engine.Assessment, df: pd.DataFrame) -> Non
         ),
         unsafe_allow_html=True,
     )
-    st.dataframe(
-        engine.district_profile(df, assessment),
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Changed": st.column_config.CheckboxColumn(
-                "Changed", help="Simulated input differs from the dataset value"
-            ),
-            "Source": st.column_config.TextColumn("Source", help="Real reference data or synthetic"),
-        },
+    profile = engine.district_profile(df, assessment)
+    st.markdown(
+        theme.data_table_html(
+            [
+                theme.Column("Input", "strong nowrap"),
+                theme.Column("This scenario", "nowrap"),
+                theme.Column("Dataset value", "nowrap"),
+                theme.Column("Province median", "nowrap"),
+                theme.Column("Pakistan range", "nowrap"),
+                theme.Column("Source"),
+            ],
+            [
+                [
+                    row["Input"],
+                    theme.text_with_badge_html(
+                        str(row["This scenario"]), theme.badge_html("Changed", "changed") if row["Changed"] else None
+                    ),
+                    row["Dataset value"],
+                    row["Province median"],
+                    row["Pakistan range"],
+                    theme.badge_html(str(row["Source"]), str(row["Source"]).lower()),
+                ]
+                for _, row in profile.iterrows()
+            ],
+            caption=f"{assessment.district} district profile",
+        ),
+        unsafe_allow_html=True,
     )
 
 
@@ -529,45 +563,58 @@ def render_stress_test(
     results = get_stress_test(bundle.sha256, data_sha256, float(temp_shift), float(rain_factor), bundle, df, domain)
 
     newly = results[results["becomes_high"]].sort_values("change_pts", ascending=False)
-    counts = ", ".join(f"{engine.TARGET_LABELS[t]} {int((newly['target'] == t).sum())}" for t in bundle.targets)
+    extrapolated_share = results.loc[results["target"].isin(["flood_risk", "heatwave_risk"]), "extrapolated"].mean()
+    tiles = [(str(len(newly)), "district-hazard results would become High")]
+    tiles += [
+        (str(int((newly["target"] == t).sum())), f"{engine.TARGET_LABELS[t]} districts newly High")
+        for t in bundle.targets
+    ]
+    tiles.append((f"{extrapolated_share:.0%}", "of flood and heatwave results extrapolated"))
+    st.markdown(theme.stat_tiles_html(tiles), unsafe_allow_html=True)
+
     st.markdown(
-        theme.section_head_html(
-            f"{len(newly)} district-hazard results would become High",
-            f"+{temp_shift:g} °C and rainfall ×{rain_factor:g} · by hazard: {counts} · largest rise in P(High) first",
-            panel=True,
+        theme.sub_head_html(
+            "Districts that would become High", f"+{temp_shift:g} °C, rainfall ×{rain_factor:g} · largest rise first"
         ),
         unsafe_allow_html=True,
     )
     if newly.empty:
-        st.markdown("No district moves to High under this scenario.")
+        st.markdown(theme.note_html("No district moves to High under this scenario."), unsafe_allow_html=True)
     else:
-        st.dataframe(
-            pd.DataFrame(
-                {
-                    "District": newly["district_name"],
-                    "Province": newly["province"],
-                    "Hazard": newly["target"].map(engine.TARGET_LABELS),
-                    "Now": newly["current_label"]
-                    + " · "
-                    + (newly["current_p_high"] * 100).round(0).astype(int).astype(str)
-                    + "%",
-                    "Under scenario": "High · "
-                    + (newly["stressed_p_high"] * 100).round(0).astype(int).astype(str)
-                    + "%",
-                    "Rise in P(High)": newly["change_pts"].map(lambda v: f"+{v:.1f} pts"),
-                    "Confidence": newly["extrapolated"].map(
-                        {True: "⚠ Extrapolated: input beyond training range", False: "Within training range"}
-                    ),
-                }
+        st.markdown(
+            theme.data_table_html(
+                [
+                    theme.Column("District"),
+                    theme.Column("Hazard"),
+                    theme.Column("Now"),
+                    theme.Column("Under scenario"),
+                    theme.Column("Rise", "num"),
+                    theme.Column("Confidence"),
+                ],
+                [
+                    [
+                        theme.two_line_html(r.district_name, r.province),
+                        engine.TARGET_LABELS[r.target],
+                        theme.level_pill_html(r.current_label, f"· {r.current_p_high:.0%}"),
+                        theme.level_pill_html("High", f"· {r.stressed_p_high:.0%}"),
+                        f"+{r.change_pts:.1f} pts",
+                        theme.badge_html("⚠ Extrapolated", "changed")
+                        if r.extrapolated
+                        else theme.muted_text_html("Within training range"),
+                    ]
+                    for r in newly.itertuples()
+                ],
+                caption="Districts that would become High under the scenario",
+                max_height_px=430,
             ),
-            hide_index=True,
-            width="stretch",
-            height=min(38 * (len(newly) + 1) + 4, 400),
+            unsafe_allow_html=True,
         )
-    extrapolated_share = results.loc[results["target"].isin(["flood_risk", "heatwave_risk"]), "extrapolated"].mean()
     st.markdown(
-        f"Seismic results never change here: the seismic model does not use temperature or rainfall. "
-        f"{extrapolated_share:.0%} of flood and heatwave results under this scenario are extrapolated."
+        theme.note_html(
+            "Seismic results never change here: the seismic model does not use temperature or rainfall. "
+            "Extrapolated means at least one shifted input is beyond the range the model was trained on."
+        ),
+        unsafe_allow_html=True,
     )
 
     hazard = st.segmented_control(
@@ -584,10 +631,8 @@ def render_stress_test(
             rows = _map_rows(results, hazard, stressed)
             emphasized = rows[f"{'stressed' if stressed else 'current'}_label"] == "High"
             st.markdown(
-                theme.section_head_html(
-                    title,
-                    f"{int(emphasized.sum())} districts High for {engine.TARGET_LABELS[hazard].lower()}",
-                    panel=True,
+                theme.sub_head_html(
+                    title, f"{int(emphasized.sum())} districts High for {engine.TARGET_LABELS[hazard].lower()}"
                 ),
                 unsafe_allow_html=True,
             )
@@ -635,34 +680,48 @@ def render_hotspots(
         label_col, p_col = "stressed_label", "stressed_p_high"
 
     hotspots = engine.multi_hazard_hotspots(predictions, label_col, p_col)
+    all_three = int((hotspots["high_count"] >= len(bundle.targets)).sum()) if not hotspots.empty else 0
     st.markdown(
-        theme.section_head_html(
-            f"{len(hotspots)} districts are High for two or more hazards",
-            "Compound risk: one district facing several hazards at once needs coordinated preparedness.",
-            panel=True,
+        theme.stat_tiles_html(
+            [
+                (str(len(hotspots)), "districts are High for two or more hazards"),
+                (str(all_three), "High for all three hazards"),
+                (str(hotspots["province"].nunique()) if not hotspots.empty else "0", "provinces affected"),
+            ]
         ),
         unsafe_allow_html=True,
     )
-    table_col, map_col = st.columns([7, 5], gap="large")
+    st.markdown(
+        theme.note_html("Compound risk: a district facing several hazards at once needs coordinated preparedness."),
+        unsafe_allow_html=True,
+    )
+    table_col, map_col = st.columns([7, 5], gap="medium")
     with table_col:
-        st.dataframe(
-            hotspots.rename(
-                columns={
-                    "district_name": "District",
-                    "province": "Province",
-                    "high_count": "High hazards",
-                    "high_hazards": "Which hazards",
-                    "combined_p_high": "Sum P(High)",
-                }
-            ),
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "Sum P(High)": st.column_config.NumberColumn(
-                    format="%.2f", help="Sum of P(High) across the High hazards; used to rank ties"
-                )
-            },
-        )
+        if hotspots.empty:
+            st.markdown(theme.note_html("No district is High for two or more hazards."), unsafe_allow_html=True)
+        else:
+            st.markdown(
+                theme.data_table_html(
+                    [
+                        theme.Column("District"),
+                        theme.Column("High for"),
+                        theme.Column("Sum P(High)", "num"),
+                    ],
+                    [
+                        [
+                            theme.two_line_html(r.district_name, r.province),
+                            theme.pill_row_html(
+                                [theme.level_pill_html("High", label=h.strip()) for h in r.high_hazards.split(",")]
+                            ),
+                            f"{r.combined_p_high:.2f}",
+                        ]
+                        for r in hotspots.itertuples()
+                    ],
+                    caption="Districts High for two or more hazards",
+                    max_height_px=440,
+                ),
+                unsafe_allow_html=True,
+            )
     with map_col:
         rows = predictions[predictions["target"] == bundle.targets[0]].copy()
         by_name = hotspots.set_index("district_name")
@@ -727,36 +786,50 @@ def render_model_card(bundle: engine.ModelBundle, issues: tuple[engine.Provenanc
         rows.append(
             {
                 "Hazard": engine.TARGET_LABELS[target],
-                "Inputs": len(bundle.features_for(target)),
-                "Model": meta["model_families"].get(target, "?"),
-                "High at P(High) ≥": f"{bundle.high_thresholds[target]:.0%}",
-                "High recall (argmax → tuned)": f"{cal['high_recall']['mean']:.2f} → {tuned['high_recall']['mean']:.2f}",
-                "Missed / false High (argmax → tuned)": (
+                "Model": f"{meta['model_families'].get(target, '?')} · {len(bundle.features_for(target))} inputs",
+                "High from": f"{bundle.high_thresholds[target]:.0%}",
+                "High recall": f"{cal['high_recall']['mean']:.2f} → {tuned['high_recall']['mean']:.2f}",
+                "Missed / false High": (
                     f"{held_out['argmax']['high_missed']}/{held_out['argmax']['high_false_alarms']} → "
                     f"{held_out['recall_tuned']['high_missed']}/{held_out['recall_tuned']['high_false_alarms']}"
                 ),
                 "Macro-F1": f"{tuned['macro_f1']['mean']:.3f} ± {tuned['macro_f1']['std']:.3f}",
-                "Brier (raw → cal.)": f"{raw['brier']['mean']:.3f} → {cal['brier']['mean']:.3f}",
+                "Brier": f"{raw['brier']['mean']:.3f} → {cal['brier']['mean']:.3f}",
             }
         )
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    table = pd.DataFrame(rows)
+    st.markdown(
+        theme.data_table_html(
+            [theme.Column(name, "strong" if name == "Hazard" else "nowrap") for name in table.columns],
+            table.to_numpy().tolist(),
+            caption="Nested cross-validation performance per hazard",
+        ),
+        unsafe_allow_html=True,
+    )
+    n_high = int(meta["per_class_held_out"][bundle.targets[0]]["argmax"]["High"]["support"])
+    st.markdown(
+        theme.note_html(
+            "Arrows read argmax rule → recall-tuned rule; Brier reads raw → calibrated. Missed / false High counts "
+            f"are out of {n_high} High and {int(meta['n_rows']) - n_high} other districts (pooled held-out predictions)."
+        ),
+        unsafe_allow_html=True,
+    )
     st.markdown(
         "**Decision rule:** a district is flagged High when its calibrated P(High) reaches the hazard's threshold, "
         "chosen on training folds to favour recall (F2). A missed High district is treated as costlier than a false "
         "alarm; the missed/false-alarm counts above show that trade-off on held-out predictions."
     )
     with st.expander("Inputs each hazard model uses (isolated by design)"):
-        st.dataframe(
-            pd.DataFrame(
-                {
-                    "Hazard": [engine.TARGET_LABELS[t] for t in bundle.targets],
-                    "Inputs": [
-                        ", ".join(engine.FEATURE_LABELS[f] for f in bundle.features_for(t)) for t in bundle.targets
-                    ],
-                }
+        st.markdown(
+            theme.data_table_html(
+                [theme.Column("Hazard", "strong"), theme.Column("Inputs")],
+                [
+                    [engine.TARGET_LABELS[t], ", ".join(engine.FEATURE_LABELS[f] for f in bundle.features_for(t))]
+                    for t in bundle.targets
+                ],
+                caption="Inputs used by each hazard model",
             ),
-            hide_index=True,
-            width="stretch",
+            unsafe_allow_html=True,
         )
 
     st.markdown(theme.section_head_html("Limitations", panel=True), unsafe_allow_html=True)

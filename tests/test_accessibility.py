@@ -49,6 +49,25 @@ def test_card_html_escapes_dynamic_text() -> None:
     assert "<script>" not in html and "&lt;script&gt;" in html
 
 
+def test_gauge_draws_value_and_high_zone_from_the_threshold() -> None:
+    card = theme.kpi_card_html("Flood", "High", 0.62, None, high_threshold=0.40)
+    assert 'stroke-dasharray="62.00 100"' in card  # value arc covers 62% of the dial
+    assert 'stroke-dasharray="0 40.00 60.00 100"' in card  # red High zone starts at the threshold
+    assert "--angle: 111.6deg" in card  # needle: 0.62 x 180 degrees
+    assert "62.0%" in card and "High zone from <strong>40%</strong>" in card and "▲" in card
+
+
+def test_tables_escape_plain_text_and_keep_trusted_markup() -> None:
+    table = theme.data_table_html(
+        [theme.Column("A"), theme.Column("B")],
+        [["<img src=x onerror=alert(1)>", theme.level_pill_html("Low")]],
+        caption="<b>cap</b>",
+    )
+    assert "<img" not in table and "&lt;img" in table and "&lt;b&gt;cap" in table
+    assert 'class="pill"' in table and "●" in table
+    assert '<th scope="col">A</th>' in table
+
+
 def test_contrast_ratio_reference_values() -> None:
     assert theme.contrast_ratio("#000000", "#FFFFFF") == pytest.approx(21.0)
     assert theme.contrast_ratio("#FFFFFF", "#FFFFFF") == pytest.approx(1.0)
