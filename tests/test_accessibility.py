@@ -68,6 +68,29 @@ def test_tables_escape_plain_text_and_keep_trusted_markup() -> None:
     assert '<th scope="col">A</th>' in table
 
 
+def test_profile_parts_state_meaning_in_text_not_only_graphics() -> None:
+    assert "▲" in theme.delta_chip_html(23.4) and "23% above" in theme.delta_chip_html(23.4)
+    assert "12% below" in theme.delta_chip_html(-12.0) and "≈ same" in theme.delta_chip_html(0.4)
+    assert theme.delta_chip_html(float("nan")).endswith("—</span>")
+    assert "higher than 82% of districts" in theme.rank_note_html(0.82, 0.10)
+    bar = theme.range_bar_html(1.4, -0.2, "1 km", "9 km", "<value>")
+    assert 'style="width: 100.0%"' in bar and 'style="left: 0.0%"' in bar  # clipped to the track
+    assert 'aria-label="&lt;value&gt;"' in bar
+    table = theme.data_table_html(
+        [theme.Column("A"), theme.Column("B")],
+        [theme.TableGroup("Group <1>", theme.badge_html("Real", "real")), theme.TableRow(["x", "y"], "changed")],
+        caption="t",
+    )
+    assert '<th scope="rowgroup" colspan="2">Group &lt;1&gt;' in table and '<tr class="changed">' in table
+
+
+def test_model_card_headings_have_icons_and_escaped_badges() -> None:
+    head = theme.card_head_html("alert", "Limits", "sub", badge=("<b>", "changed"), tone="warn")
+    assert "<svg" in head and 'class="card-head warn"' in head and "&lt;b&gt;" in head
+    limits = theme.limitations_html([("Small <sample>", "text")])
+    assert '<span class="lim-num" aria-hidden="true">1</span>' in limits and "Small &lt;sample&gt;" in limits
+
+
 def test_contrast_ratio_reference_values() -> None:
     assert theme.contrast_ratio("#000000", "#FFFFFF") == pytest.approx(21.0)
     assert theme.contrast_ratio("#FFFFFF", "#FFFFFF") == pytest.approx(1.0)

@@ -82,7 +82,11 @@ BAR_TRACK: Final[str] = "#E2E8F0"
 #: Table badges.
 REAL_BADGE_BACKGROUND: Final[str] = "#E8F3EC"  # light flag green
 REAL_BADGE_TEXT: Final[str] = "#01411C"
-INSIGHT_BACKGROUND: Final[str] = "#F0F7F3"  # "Why" callout, flag-green tint
+INSIGHT_BACKGROUND: Final[str] = "#F0F7F3"  # "Why" callout and download bar, flag-green tint
+LIMITS_BACKGROUND: Final[str] = "#FFFBEB"  # amber-50: limitations card and changed profile rows
+#: District profile range bar: light green fill to the scenario dot (flag green), slate tick at the province median.
+RANGE_FILL: Final[str] = "#B9DCC7"
+RANGE_MEDIAN: Final[str] = "#334155"
 #: Sidebar logo (emblem + wordmark in flag green), rendered by scripts/build_logo.py.
 LOGO_PATH: Final[Path] = Path(__file__).resolve().parent / "static" / "nigehban-logo.png"
 
@@ -203,6 +207,32 @@ def contrast_requirements() -> tuple[ContrastRequirement, ...]:
         ContrastRequirement("insight callout accent rule (graphic)", HEADER_STOPS[0], (INSIGHT_BACKGROUND,), 3.0),
         ContrastRequirement("sidebar logo (graphic + wordmark)", HEADER_STOPS[0], (SECTION_BACKGROUND,), 4.5),
         ContrastRequirement("stat tile value and label", TEXT_MUTED, white, 4.5),
+        ContrastRequirement("icon tiles: white icon on brand green (graphic)", HEADER_TITLE, HEADER_STOPS, 3.0),
+        ContrastRequirement("limitations icon tile (graphic)", HEADER_TITLE, (BANNER_ACCENT, BANNER_TEXT), 3.0),
+        ContrastRequirement("CSV button text, normal and hover (14px bold)", HEADER_TITLE, HEADER_STOPS, 4.5),
+        ContrastRequirement(
+            "Report button text, normal and hover (14px bold)",
+            HEADER_STOPS[0],
+            (PAGE_BACKGROUND, REAL_BADGE_BACKGROUND),
+            4.5,
+        ),
+        ContrastRequirement("download bar title and subtitle", TEXT_MUTED, (INSIGHT_BACKGROUND,), 4.5),
+        ContrastRequirement("sidebar card title and hint", TEXT_MUTED, white, 4.5),
+        ContrastRequirement("limitations card text", TEXT_SECONDARY, (LIMITS_BACKGROUND, PAGE_BACKGROUND), 4.5),
+        ContrastRequirement("limitations card subtitle", TEXT_MUTED, (LIMITS_BACKGROUND,), 4.5),
+        ContrastRequirement("limitation number (13px bold)", BANNER_TEXT, (BANNER_BACKGROUND,), 4.5),
+        ContrastRequirement("model sub-card subtitle", TEXT_MUTED, (SECTION_BACKGROUND,), 4.5),
+        ContrastRequirement("changed profile row text", TEXT_PRIMARY, (LIMITS_BACKGROUND,), 4.5),
+        ContrastRequirement("changed row accent (graphic)", BANNER_ACCENT, (LIMITS_BACKGROUND,), 3.0),
+        ContrastRequirement("range bar scenario dot (graphic)", HEADER_STOPS[0], (BAR_TRACK, RANGE_FILL), 3.0),
+        ContrastRequirement(
+            "range bar province-median tick (graphic)", RANGE_MEDIAN, (BAR_TRACK, RANGE_FILL, PAGE_BACKGROUND), 3.0
+        ),
+        ContrastRequirement(
+            "range labels and rank note (11-12px)", TEXT_MUTED, (PAGE_BACKGROUND, LIMITS_BACKGROUND), 4.5
+        ),
+        ContrastRequirement("group row title (13px bold)", TEXT_PRIMARY, white, 4.5),
+        ContrastRequirement("delta chip (12px)", TEXT_PRIMARY, (CHIP_BACKGROUND,), 4.5),
         ContrastRequirement("section subtitles and captions (14px)", TEXT_MUTED, white, 4.5),
         ContrastRequirement("waterfall labels, ticks, values (13px)", TEXT_SECONDARY, white, 4.5),
         ContrastRequirement("waterfall 'raises' bars (graphic)", RAISES_COLOR, white, 3.0),
@@ -391,6 +421,84 @@ def page_css() -> str:
 .chart-legend {{ display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; }}
 .chart-legend .key {{ display: inline-flex; align-items: center; gap: 0.4rem; }}
 .chart-legend .sw {{ width: 12px; height: 12px; border-radius: 3px; display: inline-block; }}
+
+/* ---- Download bar ---- */
+.st-key-export_bar {{ background: {INSIGHT_BACKGROUND}; border: 1px solid {REAL_BADGE_BACKGROUND}; border-left: 5px solid {h0};
+  border-radius: 14px; padding: 0.75rem 1rem; }}
+.export-head {{ display: flex; align-items: center; gap: 0.75rem; }}
+.card-ico {{ flex: none; width: 2.5rem; height: 2.5rem; border-radius: 11px; color: {HEADER_TITLE};
+  background: linear-gradient(135deg, {h0} 0%, {h1} 100%); display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 8px rgba(1, 65, 28, 0.25); }}
+.card-ico svg {{ width: 1.3rem; height: 1.3rem; }}
+.export-head .export-title {{ display: block; color: {TEXT_PRIMARY}; font-size: 17px; font-weight: 800; line-height: 1.25; }}
+.export-head .export-sub {{ display: block; color: {TEXT_MUTED}; font-size: 13px; }}
+.st-key-dl_csv button, .st-key-dl_report button {{ min-height: 2.8rem; border-radius: 10px; font-weight: 700;
+  transition: background 0.15s ease, transform 0.15s ease; }}
+.st-key-dl_csv button {{ background: {h0}; color: {HEADER_TITLE}; border: 1.5px solid {h0}; }}
+.st-key-dl_csv button:hover {{ background: {h1}; border-color: {h1}; color: {HEADER_TITLE}; transform: translateY(-1px); }}
+.st-key-dl_report button {{ background: {PAGE_BACKGROUND}; color: {h0}; border: 1.5px solid {h0}; }}
+.st-key-dl_report button:hover {{ background: {REAL_BADGE_BACKGROUND}; color: {h0}; border-color: {h0}; transform: translateY(-1px); }}
+.st-key-dl_csv button p, .st-key-dl_report button p, .st-key-dl_csv button span, .st-key-dl_report button span {{
+  color: inherit; font-weight: 700; }}
+
+/* ---- District profile ---- */
+.data-table tr.group th {{ position: static; background: {PAGE_BACKGROUND}; color: {TEXT_PRIMARY}; font-size: 13px;
+  letter-spacing: 0.04em; padding: 0.75rem 0.85rem 0.45rem 0.85rem; border-bottom: 2px solid {h0}; }}
+.data-table tr.group th .badge {{ margin-left: 0.5rem; vertical-align: middle; text-transform: none; letter-spacing: 0; }}
+.data-table tr.changed td {{ background: #FFFBEB; }}
+.data-table tr.changed td:first-child {{ box-shadow: inset 4px 0 0 {BANNER_ACCENT}; }}
+.data-table .was {{ display: block; color: {TEXT_MUTED}; font-size: 12px; }}
+.delta {{ display: inline-block; padding: 0.08rem 0.5rem; border-radius: 999px; background: {CHIP_BACKGROUND};
+  border: 1px solid {CHIP_BORDER}; color: {TEXT_PRIMARY}; font-size: 12px; font-weight: 600; white-space: nowrap; }}
+.rbar {{ min-width: 11rem; }}
+.rtrack {{ position: relative; height: 8px; border-radius: 999px; background: {BAR_TRACK}; margin: 0.35rem 0 0.25rem 0; }}
+.rfill {{ position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: {RANGE_FILL}; }}
+.rmed {{ position: absolute; top: -4px; width: 3px; height: 16px; margin-left: -1.5px; border-radius: 2px; background: {RANGE_MEDIAN}; }}
+.rdot {{ position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  background: {h0}; box-shadow: 0 0 0 2px {PAGE_BACKGROUND}, 0 1px 3px rgba(15, 23, 42, 0.3); }}
+.rlabels {{ display: flex; justify-content: space-between; color: {TEXT_MUTED}; font-size: 11px; }}
+.rank {{ display: block; color: {TEXT_MUTED}; font-size: 12px; margin-top: 0.1rem; }}
+.profile-key {{ display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; color: {TEXT_SECONDARY}; font-size: 13px; margin-top: 0.5rem; }}
+.profile-key .k {{ display: inline-flex; align-items: center; gap: 0.4rem; }}
+.profile-key .kdot {{ width: 12px; height: 12px; border-radius: 50%; background: {h0}; }}
+.profile-key .kmed {{ width: 3px; height: 14px; border-radius: 2px; background: {RANGE_MEDIAN}; }}
+.profile-key .kchg {{ width: 12px; height: 12px; border-radius: 3px; background: #FFFBEB; box-shadow: inset 3px 0 0 {BANNER_ACCENT}; border: 1px solid {CHIP_BORDER}; }}
+
+/* ---- Model card sub-cards ---- */
+[class*="st-key-card_"] {{ background: {SECTION_BACKGROUND}; border: 1px solid {HAIRLINE}; border-top: 4px solid {h0};
+  border-radius: 14px; padding: 1rem 1.1rem 1.1rem 1.1rem; }}
+.st-key-card_limitations {{ background: {LIMITS_BACKGROUND}; border-top-color: {BANNER_ACCENT}; }}
+.card-head {{ display: flex; align-items: center; gap: 0.8rem; padding-bottom: 0.7rem; border-bottom: 1px solid {HAIRLINE}; }}
+.card-head.warn .card-ico {{ background: linear-gradient(135deg, {BANNER_ACCENT} 0%, {BANNER_TEXT} 100%);
+  box-shadow: 0 3px 8px rgba(180, 83, 9, 0.25); }}
+.card-head .card-titles {{ flex: 1; min-width: 0; }}
+.card-head .card-title {{ color: {TEXT_PRIMARY}; font-size: 19px; font-weight: 800; line-height: 1.25; }}
+.card-head .card-sub {{ color: {TEXT_MUTED}; font-size: 13px; line-height: 1.45; margin-top: 0.1rem; }}
+.card-badge {{ flex: none; padding: 0.2rem 0.65rem; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap;
+  background: {CHIP_BACKGROUND}; color: {TEXT_SECONDARY}; border: 1px solid {CHIP_BORDER}; }}
+.card-badge.real {{ background: {REAL_BADGE_BACKGROUND}; color: {REAL_BADGE_TEXT}; border-color: transparent; }}
+.card-badge.changed {{ background: {BANNER_BACKGROUND}; color: {BANNER_TEXT}; border-color: transparent; }}
+@media (max-width: 640px) {{
+  .card-head {{ flex-wrap: wrap; }}
+  .card-head .card-titles {{ flex: 1 1 calc(100% - 3.5rem); }}
+  .card-head .card-badge {{ order: 3; margin-left: 3.3rem; }}
+}}
+/* Streamlit's markdown styles indent ul/ol and space li; the card lists manage their own layout. */
+[data-testid="stMarkdownContainer"] ol.limits, [data-testid="stMarkdownContainer"] ul.checklist {{
+  padding-left: 0; margin-left: 0; }}
+[data-testid="stMarkdownContainer"] ol.limits li, [data-testid="stMarkdownContainer"] ul.checklist li {{
+  margin-left: 0; padding-left: 0.8rem; }}
+[class*="st-key-card_"] .checklist {{ margin: 0; }}
+[class*="st-key-card_"] .checklist li {{ background: {PAGE_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 10px;
+  padding: 0.6rem 0.8rem; margin-bottom: 0.45rem; align-items: flex-start; }}
+[class*="st-key-card_"] .checklist li:last-child {{ margin-bottom: 0; }}
+.limits {{ list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0.6rem; }}
+.limits li {{ display: flex; gap: 0.7rem; background: {PAGE_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 10px;
+  padding: 0.7rem 0.85rem; }}
+.limits .lim-num {{ flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: {BANNER_BACKGROUND};
+  color: {BANNER_TEXT}; font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; }}
+.limits .lim-title {{ color: {TEXT_PRIMARY}; font-weight: 700; font-size: 14px; }}
+.limits .lim-text {{ color: {TEXT_SECONDARY}; font-size: 13px; line-height: 1.5; margin-top: 0.1rem; }}
 .map-legend {{ display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; margin: 0.35rem 0 0 0; }}
 .map-legend .key {{ display: inline-flex; align-items: center; gap: 0.35rem; }}
 .map-legend .dot {{ width: 10px; height: 10px; border-radius: 50%; display: inline-block; }}
@@ -450,10 +558,16 @@ def page_css() -> str:
   background: {PAGE_BACKGROUND}; border: 1px solid {HAIRLINE}; border-radius: 14px;
   box-shadow: {PANEL_SHADOW}; padding: 0.8rem 0.9rem 0.9rem 0.9rem; gap: 0.55rem;
 }}
-.sb-card-head {{ display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
-  padding-bottom: 0.45rem; margin-bottom: 0.35rem; border-bottom: 1px solid {HAIRLINE}; }}
-.sb-card-head .sb-label {{ color: {TEXT_SECONDARY}; font-size: {SMALL_FONT_PX}px; font-weight: 700;
-  letter-spacing: 0.06em; text-transform: uppercase; }}
+[data-testid="stSidebar"] [class*="st-key-sb_"] {{ border-top: 3px solid {h0}; }}
+.sb-card-head {{ display: flex; align-items: center; gap: 0.6rem;
+  padding-bottom: 0.6rem; margin-bottom: 0.35rem; border-bottom: 1px solid {HAIRLINE}; }}
+.sb-card-head .sb-ico {{ flex: none; width: 2rem; height: 2rem; border-radius: 9px; color: {HEADER_TITLE};
+  background: linear-gradient(135deg, {h0} 0%, {h1} 100%); display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 6px rgba(1, 65, 28, 0.25); }}
+.sb-card-head .sb-ico svg {{ width: 1.05rem; height: 1.05rem; }}
+.sb-card-head .sb-titles {{ display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }}
+.sb-card-head .sb-label {{ color: {TEXT_PRIMARY}; font-size: 16px; font-weight: 800; letter-spacing: 0.01em; }}
+.sb-card-head .sb-hint {{ color: {TEXT_MUTED}; font-size: 12px; }}
 .sb-card-head .sb-count {{ background: {CHIP_BACKGROUND}; border: 1px solid {CHIP_BORDER}; color: {TEXT_PRIMARY};
   border-radius: 999px; padding: 0.02rem 0.55rem; font-size: 12px; font-weight: 600; white-space: nowrap; }}
 .sb-meta {{ display: flex; flex-wrap: wrap; gap: 0.35rem; }}
@@ -571,10 +685,127 @@ def sidebar_intro_html() -> str:
     )
 
 
-def sidebar_card_head_html(label: str, count: str = "") -> str:
-    """Heading row of a sidebar card: an uppercase label and an optional count chip."""
+#: Stroke icons (24x24, drawn with currentColor) used in card headings. Paths are static constants.
+ICONS: Final[dict[str, str]] = {
+    "pin": '<path d="M12 21s-7-6.2-7-11a7 7 0 1 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+    "climate": '<path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0z"/><path d="M12 9v7"/>',
+    "layers": '<path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/><path d="m2 17.5 10 5 10-5"/>',
+    "sliders": (
+        '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/>'
+        '<circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>'
+    ),
+    "download": '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>',
+    "shield": '<path d="M12 3 20 6v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+    "chart": '<path d="M3 20h18"/><path d="M6 16v-5M11 16V6M16 16v-3M20 16V9"/>',
+    "alert": '<path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17.2v.3"/>',
+    "profile": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/>',
+}
+
+
+def icon_svg(name: str) -> str:
+    """Inline stroke icon from ``ICONS`` (decorative: the heading text beside it carries the meaning)."""
+    return (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+        f'stroke-linejoin="round" aria-hidden="true" focusable="false">{ICONS[name]}</svg>'
+    )
+
+
+def sidebar_card_head_html(label: str, count: str = "", hint: str = "", icon: str = "sliders") -> str:
+    """Heading row of a sidebar card: green icon tile, bold title, one-line hint, optional count chip."""
     badge = f'<span class="sb-count">{html.escape(count)}</span>' if count else ""
-    return f'<div class="sb-card-head"><span class="sb-label">{html.escape(label)}</span>{badge}</div>'
+    sub = f'<span class="sb-hint">{html.escape(hint)}</span>' if hint else ""
+    return (
+        f'<div class="sb-card-head"><span class="sb-ico">{icon_svg(icon)}</span>'
+        f'<span class="sb-titles"><span class="sb-label">{html.escape(label)}</span>'
+        f"{sub}</span>{badge}</div>"
+    )
+
+
+def export_head_html() -> str:
+    """Heading for the download bar under the KPI cards."""
+    return (
+        f'<div class="export-head"><span class="card-ico">{icon_svg("download")}</span><span>'
+        '<span class="export-title">Download this assessment</span>'
+        '<span class="export-sub">CSV for spreadsheets · plain-text report to share</span></span></div>'
+    )
+
+
+def card_head_html(
+    icon: str, title: str, subtitle: str = "", badge: tuple[str, str] | None = None, tone: str = ""
+) -> str:
+    """Heading for a model-card sub-card: icon tile, title, subtitle, and an optional ``(text, kind)`` badge."""
+    sub = f'<div class="card-sub">{html.escape(subtitle)}</div>' if subtitle else ""
+    chip = f'<span class="card-badge {html.escape(badge[1])}">{html.escape(badge[0])}</span>' if badge else ""
+    return (
+        f'<div class="card-head {html.escape(tone)}"><span class="card-ico">{icon_svg(icon)}</span>'
+        f'<div class="card-titles"><div class="card-title" role="heading" aria-level="3">{html.escape(title)}</div>'
+        f"{sub}</div>{chip}</div>"
+    )
+
+
+def limitations_html(items: Sequence[tuple[str, str]]) -> str:
+    """Limitations as numbered cards: ``(short title, explanation)``."""
+    rows = "".join(
+        f'<li><span class="lim-num" aria-hidden="true">{i}</span><div><div class="lim-title">{html.escape(title)}</div>'
+        f'<div class="lim-text">{html.escape(text)}</div></div></li>'
+        for i, (title, text) in enumerate(items, start=1)
+    )
+    return f'<ol class="limits">{rows}</ol>'
+
+
+def range_bar_html(position: float, province_position: float, low: str, high: str, description: str) -> SafeHtml:
+    """Where a value sits in the national range: filled track to a dot, a tick at the province median."""
+    pos, med = max(0.0, min(1.0, position)) * 100, max(0.0, min(1.0, province_position)) * 100
+    return SafeHtml(
+        f'<div class="rbar" role="img" aria-label="{html.escape(description)}">'
+        f'<div class="rtrack"><span class="rfill" style="width: {pos:.1f}%"></span>'
+        f'<span class="rmed" style="left: {med:.1f}%"></span><span class="rdot" style="left: {pos:.1f}%"></span></div>'
+        f'<div class="rlabels"><span>{html.escape(low)}</span><span>{html.escape(high)}</span></div></div>'
+    )
+
+
+def profile_value_html(value: str, dataset_value: str | None) -> SafeHtml:
+    """Scenario value in bold; when it was changed, a Changed badge and the original dataset value."""
+    if dataset_value is None:
+        return SafeHtml(f"<strong>{html.escape(value)}</strong>")
+    return SafeHtml(
+        f"<strong>{html.escape(value)}</strong>{badge_html('Changed', 'changed')}"
+        f'<span class="was">dataset: {html.escape(dataset_value)}</span>'
+    )
+
+
+def delta_chip_html(pct: float) -> SafeHtml:
+    """Relative difference from the province median as a neutral chip (direction is not good or bad)."""
+    if math.isnan(pct):
+        return SafeHtml('<span class="delta">—</span>')
+    if abs(pct) < 1:
+        return SafeHtml('<span class="delta">≈ same</span>')
+    arrow, word = ("▲", "above") if pct > 0 else ("▼", "below")
+    size = f"{abs(pct):.0f}%" if abs(pct) < 1000 else f"{abs(pct) / 100:.0f}×"
+    return SafeHtml(f'<span class="delta"><span aria-hidden="true">{arrow}</span> {size} {word}</span>')
+
+
+def rank_note_html(share_below: float, share_above: float) -> SafeHtml:
+    """Plain-language rank in Pakistan, e.g. 'higher than 82% of districts'."""
+    if share_below >= share_above:
+        return SafeHtml(f'<span class="rank">higher than {share_below:.0%} of districts</span>')
+    return SafeHtml(f'<span class="rank">lower than {share_above:.0%} of districts</span>')
+
+
+@dataclass(frozen=True, slots=True)
+class TableGroup:
+    """A full-width group heading row inside ``data_table_html``."""
+
+    label: str
+    badge: SafeHtml | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TableRow:
+    """A table row with a CSS class (e.g. ``changed``)."""
+
+    cells: Sequence[object]
+    css: str = ""
 
 
 def sidebar_meta_html(items: Sequence[str]) -> str:
@@ -686,7 +917,10 @@ class Column:
 
 
 def data_table_html(
-    columns: Sequence[Column], rows: Sequence[Sequence[object]], caption: str, max_height_px: int | None = None
+    columns: Sequence[Column],
+    rows: Sequence[Sequence[object] | TableRow | TableGroup],
+    caption: str,
+    max_height_px: int | None = None,
 ) -> str:
     """Accessible, styled HTML table with a sticky header; plain-text cells are escaped.
 
@@ -697,11 +931,22 @@ def data_table_html(
     def css(column: Column) -> str:
         return f' class="{html.escape(column.css)}"' if column.css else ""
 
+    def render_row(row: Sequence[object] | TableRow | TableGroup) -> str:
+        if isinstance(row, TableGroup):
+            return (
+                f'<tr class="group"><th scope="rowgroup" colspan="{len(columns)}">{html.escape(row.label)}'
+                f"{row.badge or ''}</th></tr>"
+            )
+        cells, row_css = (row.cells, row.css) if isinstance(row, TableRow) else (row, "")
+        attr = f' class="{html.escape(row_css)}"' if row_css else ""
+        return (
+            f"<tr{attr}>"
+            + "".join(f"<td{css(c)}>{_cell(v)}</td>" for c, v in zip(columns, cells, strict=True))
+            + "</tr>"
+        )
+
     head = "".join(f'<th scope="col"{css(c)}>{html.escape(c.label)}</th>' for c in columns)
-    body = "".join(
-        "<tr>" + "".join(f"<td{css(c)}>{_cell(v)}</td>" for c, v in zip(columns, row, strict=True)) + "</tr>"
-        for row in rows
-    )
+    body = "".join(render_row(row) for row in rows)
     style = f' style="max-height: {int(max_height_px)}px"' if max_height_px else ""
     label = html.escape(caption)
     return (

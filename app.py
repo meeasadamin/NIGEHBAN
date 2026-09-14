@@ -50,6 +50,26 @@ SLIDER_GROUPS: dict[str, tuple[str, ...]] = {
         "infrastructure_quality_score",
     ),
 }
+#: Sidebar card hint and icon per slider group.
+SLIDER_GROUP_HEADS: dict[str, tuple[str, str]] = {
+    "Climate": ("Rainfall and summer heat", "climate"),
+    "Land and exposure": ("Terrain, people, infrastructure", "layers"),
+}
+LIMITATIONS: tuple[tuple[str, str], ...] = (
+    (
+        "Synthetic data",
+        "Climate, exposure, event counts and all labels are synthetic. Real inputs: district names, coordinates, "
+        "point elevation, active-fault and Makran subduction geometry, and coastline (data/reference/SOURCES.md).",
+    ),
+    ("Relative labels", "Labels are relative ranks within Pakistan (top ~15% = High), not absolute hazard levels."),
+    (
+        "No historical baseline",
+        "There is no historical event dataset in this project, so changes are shown against the district's "
+        "unmodified dataset inputs only.",
+    ),
+    ("Small sample", "About 150 rows: every metric has wide uncertainty; see the ± values."),
+    ("Not operational", "Not for operational disaster response."),
+)
 MAP_CENTER = {"lat": 30.4, "lon": 70.0}  # centre of the district points' bounding box (rounded)
 MAP_ZOOM = 4.1  # fits all districts in a ~340px-wide panel (judgment, checked in Edge at 390px and 1440px)
 
@@ -133,7 +153,9 @@ def render_sidebar(df: pd.DataFrame, domain: engine.ApplicabilityDomain) -> tupl
     sidebar.markdown(theme.sidebar_intro_html(), unsafe_allow_html=True)  # static markup only
 
     with sidebar.container(key="sb_district"):
-        st.markdown(theme.sidebar_card_head_html("District"), unsafe_allow_html=True)
+        st.markdown(
+            theme.sidebar_card_head_html("District", hint="Where to assess", icon="pin"), unsafe_allow_html=True
+        )
         districts = sorted(df["district_name"].tolist())
         district = st.selectbox(
             "District",
@@ -153,7 +175,8 @@ def render_sidebar(df: pd.DataFrame, domain: engine.ApplicabilityDomain) -> tupl
     overrides: dict[str, float] = {}
     for group_index, (group, names) in enumerate(SLIDER_GROUPS.items()):
         with sidebar.container(key=f"sb_group_{group_index}"):
-            st.markdown(theme.sidebar_card_head_html(group), unsafe_allow_html=True)
+            hint, icon = SLIDER_GROUP_HEADS[group]
+            st.markdown(theme.sidebar_card_head_html(group, hint=hint, icon=icon), unsafe_allow_html=True)
             for name in names:
                 spec = engine.TUNABLE_BY_NAME[name]
                 lower, upper = domain.lower[name], domain.upper[name]
@@ -175,7 +198,9 @@ def render_sidebar(df: pd.DataFrame, domain: engine.ApplicabilityDomain) -> tupl
     changed = len(engine.changed_features(baseline, engine.build_scenario(df, district, overrides)))
     with sidebar.container(key="sb_scenario"):
         st.markdown(
-            theme.sidebar_card_head_html("Scenario", f"{changed} of {len(engine.TUNABLE_FEATURES)} changed"),
+            theme.sidebar_card_head_html(
+                "Scenario", f"{changed} of {len(engine.TUNABLE_FEATURES)} changed", hint="Your what-if", icon="sliders"
+            ),
             unsafe_allow_html=True,
         )
         st.button(
@@ -470,44 +495,76 @@ def render_map_panel(
 
 
 def render_profile_panel(assessment: engine.Assessment, df: pd.DataFrame) -> None:
-    """Full-width district profile: the table has seven columns and needs the width (checked in Edge)."""
+    """Full-width district profile: highlights, grouped comparison table with range bars, and a key."""
     st.markdown(
         theme.section_head_html(
             "District profile",
-            f"{assessment.district} compared with {assessment.province} and all {len(df)} districts. "
-            "Real = reference data; Synthetic = simulated.",
+            f"How {assessment.district} compares with {assessment.province} and all {len(df)} districts in Pakistan.",
             panel=True,
         ),
         unsafe_allow_html=True,
     )
     profile = engine.district_profile(df, assessment)
+
+    # Highlights: the three inputs where this district sits furthest from the middle of Pakistan.
+    extremeness = profile[["share_below", "share_above"]].max(axis=1)
+    tiles = []
+    for _, row in profile.loc[extremeness.sort_values(ascending=False).index[:3]].iterrows():
+        rank = (
+            f"higher than {row['share_below']:.0%}"
+            if row["share_below"] >= row["share_above"]
+            else f"lower than {row['share_above']:.0%}"
+        )
+        tiles.append((str(row["This scenario"]), f"{row['Input']} · {rank} of districts"))
+    st.markdown(theme.sub_head_html("What stands out", "furthest from the national middle"), unsafe_allow_html=True)
+    st.markdown(theme.stat_tiles_html(tiles), unsafe_allow_html=True)
+
+    def cells(row: pd.Series) -> theme.TableRow:
+        scenario = theme.profile_value_html(
+            str(row["This scenario"]), str(row["Dataset value"]) if row["Changed"] else None
+        )
+        low, high = str(row["pakistan_min_label"]), str(row["pakistan_max_label"])
+        bar = theme.range_bar_html(
+            row["range_position"],
+            row["province_position"],
+            low,
+            high,
+            f"{row['This scenario']}, between {low} and {high}; province median {row['Province median']}",
+        )
+        where = theme.SafeHtml(bar + theme.rank_note_html(row["share_below"], row["share_above"]))
+        return theme.TableRow(
+            [row["Input"], scenario, row["Province median"], theme.delta_chip_html(row["vs_province_pct"]), where],
+            "changed" if row["Changed"] else "",
+        )
+
+    synthetic, real = profile[profile["Source"] == "Synthetic"], profile[profile["Source"] == "Real"]
+    rows: list = [
+        theme.TableGroup("Simulated inputs · change them in the sidebar", theme.badge_html("Synthetic", "synthetic"))
+    ]
+    rows += [cells(row) for _, row in synthetic.iterrows()]
+    rows.append(theme.TableGroup("Geography · fixed for each district", theme.badge_html("Real data", "real")))
+    rows += [cells(row) for _, row in real.iterrows()]
     st.markdown(
         theme.data_table_html(
             [
                 theme.Column("Input", "strong nowrap"),
                 theme.Column("This scenario", "nowrap"),
-                theme.Column("Dataset value", "nowrap"),
                 theme.Column("Province median", "nowrap"),
-                theme.Column("Pakistan range", "nowrap"),
-                theme.Column("Source"),
+                theme.Column("vs province"),
+                theme.Column("Where it sits in Pakistan"),
             ],
-            [
-                [
-                    row["Input"],
-                    theme.text_with_badge_html(
-                        str(row["This scenario"]), theme.badge_html("Changed", "changed") if row["Changed"] else None
-                    ),
-                    row["Dataset value"],
-                    row["Province median"],
-                    row["Pakistan range"],
-                    theme.badge_html(str(row["Source"]), str(row["Source"]).lower()),
-                ]
-                for _, row in profile.iterrows()
-            ],
+            rows,
             caption=f"{assessment.district} district profile",
         ),
         unsafe_allow_html=True,
     )
+    st.markdown(
+        '<div class="profile-key"><span class="k"><span class="kdot"></span>This scenario</span>'
+        '<span class="k"><span class="kmed"></span>Province median</span>'
+        '<span class="k"><span class="kchg"></span>Changed in the sidebar</span>'
+        '<span class="k">Bars run from the lowest to the highest district in Pakistan</span></div>',
+        unsafe_allow_html=True,
+    )  # static markup only
 
 
 @st.cache_data(max_entries=16, show_spinner="Re-scoring every district under the scenario…")
@@ -753,24 +810,51 @@ def render_hotspots(
 def render_model_card(bundle: engine.ModelBundle, issues: tuple[engine.ProvenanceIssue, ...]) -> None:
     """Provenance checklist, honest metrics, and limitations."""
     meta = bundle.metadata
-    st.markdown(
-        theme.section_head_html(
-            "Provenance checks", "Run at every start-up against the files being served", panel=True
-        ),
-        unsafe_allow_html=True,
-    )
     checklist = engine.provenance_checklist(bundle, issues)
-    st.markdown(
-        theme.checklist_html([(item.label, item.passed, item.detail) for item in checklist]), unsafe_allow_html=True
-    )
+    passed = sum(item.passed for item in checklist)
+    with st.container(key="card_provenance"):
+        st.markdown(
+            theme.card_head_html(
+                "shield",
+                "Provenance checks",
+                "Run at every start-up against the files being served",
+                badge=(f"{passed} of {len(checklist)} passed", "real" if passed == len(checklist) else "changed"),
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            theme.checklist_html([(item.label, item.passed, item.detail) for item in checklist]),
+            unsafe_allow_html=True,
+        )
 
+    with st.container(key="card_performance"):
+        render_performance(bundle, meta)
+
+    with st.container(key="card_limitations"):
+        st.markdown(
+            theme.card_head_html(
+                "alert",
+                "Limitations",
+                "Read these before relying on any number on this page",
+                badge=("Simulated data", "changed"),
+                tone="warn",
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(theme.limitations_html(LIMITATIONS), unsafe_allow_html=True)
+
+
+def render_performance(bundle: engine.ModelBundle, meta: dict) -> None:
+    """Nested cross-validation table, how to read it, the decision rule, and per-hazard inputs."""
     search = meta["search"]
     st.markdown(
-        theme.section_head_html(
-            "Performance (nested cross-validation)",
-            f"{search['outer_folds']} outer × {search['inner_folds']} inner folds, {search['n_trials']} Optuna trials, "
-            f"class-weighted {', '.join(search['families'])}. Mean ± standard deviation over outer folds.",
-            panel=True,
+        theme.card_head_html(
+            "chart",
+            "Performance",
+            f"Nested cross-validation: {search['outer_folds']} outer × {search['inner_folds']} inner folds, "
+            f"{search['n_trials']} Optuna trials, class-weighted {', '.join(search['families'])}. "
+            "Mean ± standard deviation over outer folds.",
+            badge=("Held-out estimates", "synthetic"),
         ),
         unsafe_allow_html=True,
     )
@@ -815,9 +899,13 @@ def render_model_card(bundle: engine.ModelBundle, issues: tuple[engine.Provenanc
         unsafe_allow_html=True,
     )
     st.markdown(
-        "**Decision rule:** a district is flagged High when its calibrated P(High) reaches the hazard's threshold, "
-        "chosen on training folds to favour recall (F2). A missed High district is treated as costlier than a false "
-        "alarm; the missed/false-alarm counts above show that trade-off on held-out predictions."
+        theme.insight_html(
+            "Decision rule",
+            "A district is flagged High when its calibrated P(High) reaches the hazard's threshold, chosen on training "
+            "folds to favour recall (F2). A missed High district is treated as costlier than a false alarm; the "
+            "missed / false-alarm counts above show that trade-off on held-out predictions.",
+        ),
+        unsafe_allow_html=True,
     )
     with st.expander("Inputs each hazard model uses (isolated by design)"):
         st.markdown(
@@ -831,17 +919,6 @@ def render_model_card(bundle: engine.ModelBundle, issues: tuple[engine.Provenanc
             ),
             unsafe_allow_html=True,
         )
-
-    st.markdown(theme.section_head_html("Limitations", panel=True), unsafe_allow_html=True)
-    st.markdown(
-        "- Climate, exposure, event counts, and all labels are synthetic. Real inputs: district names, coordinates, "
-        "point elevation, active-fault and Makran subduction geometry, coastline (`data/reference/SOURCES.md`).\n"
-        "- Labels are relative ranks within Pakistan (top ~15% = High), not absolute hazard levels.\n"
-        "- **No historical baseline:** there is no historical event dataset in this project, so changes are shown "
-        "against the district's unmodified dataset inputs only.\n"
-        "- About 150 rows: every metric has wide uncertainty; see the ± values.\n"
-        "- Not for operational disaster response."
-    )
 
 
 def render_dashboard() -> None:
@@ -906,31 +983,32 @@ def render_dashboard() -> None:
         st.markdown(f'<div class="kpi-grid">{cards}</div>', unsafe_allow_html=True)  # every dynamic value is escaped
 
         # Exports after the risk numbers: on a phone the columns stack, and risk must come before downloads.
-        note_col, csv_col, txt_col = st.columns([6, 2, 2], vertical_alignment="center")
-        note_col.markdown(
-            '<div class="toolbar-note">Download this assessment for your records.</div>', unsafe_allow_html=True
-        )
-        slug = re.sub(r"[^a-z0-9]+", "-", district.lower()).strip("-")
-        csv_col.download_button(
-            "CSV",
-            engine.assessment_to_csv(assessment),
-            f"{slug}-assessment.csv",
-            "text/csv",
-            on_click="ignore",
-            width="stretch",
-            icon=":material/download:",
-            help="Download this assessment as CSV (one row per hazard)",
-        )
-        txt_col.download_button(
-            "Report",
-            engine.assessment_to_text(assessment),
-            f"{slug}-assessment.txt",
-            "text/plain",
-            on_click="ignore",
-            width="stretch",
-            icon=":material/description:",
-            help="Download this assessment as a plain-text report",
-        )
+        with st.container(key="export_bar"):
+            note_col, csv_col, txt_col = st.columns([6, 2, 2], vertical_alignment="center")
+            note_col.markdown(theme.export_head_html(), unsafe_allow_html=True)  # static markup only
+            slug = re.sub(r"[^a-z0-9]+", "-", district.lower()).strip("-")
+            csv_col.download_button(
+                "Download CSV",
+                engine.assessment_to_csv(assessment),
+                f"{slug}-assessment.csv",
+                "text/csv",
+                on_click="ignore",
+                width="stretch",
+                icon=":material/table_view:",
+                key="dl_csv",
+                help="Download this assessment as CSV (one row per hazard)",
+            )
+            txt_col.download_button(
+                "Download report",
+                engine.assessment_to_text(assessment),
+                f"{slug}-assessment.txt",
+                "text/plain",
+                on_click="ignore",
+                width="stretch",
+                icon=":material/description:",
+                key="dl_report",
+                help="Download this assessment as a plain-text report",
+            )
 
     # 02 · Why this assessment: hazard picker drives the explanation and the national map.
     with st.container(key="section_detail"):

@@ -1296,22 +1296,41 @@ def district_profile(df: pd.DataFrame, assessment: Assessment) -> pd.DataFrame:
     """Compare the scored scenario with the district's data, its province, and all of Pakistan.
 
     Returns:
-        One row per ``PROFILE_FEATURES`` entry with formatted, unit-labelled values and a
-        ``Changed`` flag for simulated inputs.
+        One row per ``PROFILE_FEATURES`` entry with formatted, unit-labelled values, a ``Changed``
+        flag for simulated inputs, and the raw numbers behind them (``scenario_value``,
+        ``province_median``, ``pakistan_min``, ``pakistan_max``, ``range_position`` in 0-1, and
+        ``vs_province_pct``, the relative difference from the province median or NaN when that median is 0,
+        and ``share_below`` / ``share_above``, the share of districts with a lower / higher value).
     """
     province_rows = df[df["province"].astype(str) == assessment.province]
     rows = []
     for name in PROFILE_FEATURES:
         spec = FEATURE_SPECS[name]
+        value = float(assessment.scenario[name].iloc[0])
+        median = float(province_rows[name].median())
+        low, high = float(df[name].min()), float(df[name].max())
         rows.append(
             {
                 "Input": spec.label,
-                "This scenario": spec.format(float(assessment.scenario[name].iloc[0])),
+                "This scenario": spec.format(value),
                 "Changed": name in assessment.modified_features,
                 "Dataset value": spec.format(float(assessment.baseline[name].iloc[0])),
-                "Province median": spec.format(float(province_rows[name].median())),
-                "Pakistan range": f"{spec.format(float(df[name].min()))} – {spec.format(float(df[name].max()))}",
+                "Province median": spec.format(median),
+                "Pakistan range": f"{spec.format(low)} – {spec.format(high)}",
                 "Source": "Real" if name in _REAL_PROFILE_FEATURES else "Synthetic",
+                "pakistan_min_label": spec.format(low),
+                "pakistan_max_label": spec.format(high),
+                "scenario_value": value,
+                "province_median": median,
+                "pakistan_min": low,
+                "pakistan_max": high,
+                # Sliders are bounded to the training range, so the position stays within 0-1; clip for safety.
+                "range_position": float(np.clip((value - low) / (high - low), 0.0, 1.0)) if high > low else 0.5,
+                "province_position": float(np.clip((median - low) / (high - low), 0.0, 1.0)) if high > low else 0.5,
+                "vs_province_pct": (value - median) / abs(median) * 100 if median else float("nan"),
+                # Share of all districts strictly below / above this value (dataset values, not scenarios).
+                "share_below": float((df[name] < value).mean()),
+                "share_above": float((df[name] > value).mean()),
             }
         )
     return pd.DataFrame(rows)

@@ -310,6 +310,12 @@ def test_district_profile_marks_changes_and_sources(
     assert not profile.loc["Annual rainfall", "Changed"]
     assert profile.loc["Distance to active fault", "Source"] == "Real"
     assert profile.loc["Annual rainfall", "Source"] == "Synthetic"
+    temperature = profile.loc["Summer max temperature"]
+    expected = (45.0 - temperature["pakistan_min"]) / (temperature["pakistan_max"] - temperature["pakistan_min"])
+    assert temperature["range_position"] == pytest.approx(expected)
+    assert profile["range_position"].min() >= 0.0 and profile["range_position"].max() <= 1.0
+    median = temperature["province_median"]
+    assert temperature["vs_province_pct"] == pytest.approx((45.0 - median) / abs(median) * 100)
 
 
 def test_provenance_checklist_covers_every_check(bundle: engine.ModelBundle, df: pd.DataFrame, data_path: Path) -> None:
